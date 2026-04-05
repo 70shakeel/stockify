@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { TransactionInput } from '@/lib/psx/types'
+import { refreshStockPrice } from '@/actions/stocks'
 
 export async function addTransaction(input: TransactionInput) {
   const supabase = await createClient()
@@ -49,9 +50,22 @@ export async function addTransaction(input: TransactionInput) {
     }
   }
 
+  const normalizedSymbol = input.symbol.toUpperCase().trim()
+
+  // Ensure stock exists in DB cache to satisfy Foreign Key constraints
+  // If it doesn't exist, insert a basic placeholder. Real data will be backfilled by the scraper later.
+  await supabase.from('stocks').upsert({
+    symbol: normalizedSymbol,
+    name: normalizedSymbol,
+    sector: 'Unknown',
+  }, { onConflict: 'symbol', ignoreDuplicates: true })
+
+  // Fire off a background fetch so the 0.00 placeholder updates with actual data shortly after.
+  refreshStockPrice(normalizedSymbol).catch(console.error)
+
   const { data, error } = await supabase.from('transactions').insert({
     user_id: user.id,
-    symbol: input.symbol.toUpperCase(),
+    symbol: normalizedSymbol,
     type: input.type,
     quantity: input.quantity,
     price_per_share: input.price_per_share,

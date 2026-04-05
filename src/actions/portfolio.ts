@@ -3,6 +3,8 @@
 import { createClient } from '@/lib/supabase/server'
 import type { PortfolioHolding, PortfolioSummaryData } from '@/lib/psx/types'
 
+import { refreshStockPrice } from '@/actions/stocks'
+
 export async function getPortfolioHoldings(): Promise<{
   data: PortfolioHolding[]
   error: string | null
@@ -28,7 +30,33 @@ export async function getPortfolioHoldings(): Promise<{
     return { data: [], error: error.message }
   }
 
-  return { data: (data as PortfolioHolding[]) || [], error: null }
+  const holdings = (data as PortfolioHolding[]) || []
+
+  // Check if any holding has a cached price of 0 (e.g. from an un-fetched placeholder)
+  const missingPriceSymbols = holdings
+    .filter(h => Number(h.current_price) === 0)
+    .map(h => h.symbol)
+
+  if (missingPriceSymbols.length > 0) {
+    // Wait for all missing stocks to be accurately scraped
+    await Promise.all(missingPriceSymbols.map(sym => refreshStockPrice(sym)))
+
+    // Refetch holdings with accurate pricing data
+    const { data: refreshedData, error: refreshedError } = await supabase
+      .from('portfolio_holdings')
+      .select('*')
+      .eq('user_id', user.id)
+      .gt('net_quantity', 0)
+      .order('current_value', { ascending: false })
+
+    if (refreshedError) {
+      return { data: holdings, error: refreshedError.message } // fallback to original
+    }
+    
+    return { data: (refreshedData as PortfolioHolding[]) || [], error: null }
+  }
+
+  return { data: holdings, error: null }
 }
 
 export async function getPortfolioSummary(): Promise<{
@@ -69,11 +97,34 @@ export async function getPortfolioSummary(): Promise<{
     }
   }
 
-  const totalInvested = holdings.reduce((sum, h) => sum + Number(h.total_invested), 0)
-  const currentValue = holdings.reduce((sum, h) => sum + Number(h.current_value), 0)
+  // Check if any holding has a cached price of 0
+  const missingPriceSymbols = holdings
+    .filter(h => Number(h.current_price) === 0)
+    .map(h => h.symbol)
+
+  let activeHoldings = holdings
+
+  if (missingPriceSymbols.length > 0) {
+    // Wait for all missing stocks to be accurately scraped
+    await Promise.all(missingPriceSymbols.map(sym => refreshStockPrice(sym)))
+
+    // Refetch holdings with accurate pricing data
+    const { data: refreshedHoldings, error: refreshedError } = await supabase
+      .from('portfolio_holdings')
+      .select('*')
+      .eq('user_id', user.id)
+      .gt('net_quantity', 0)
+
+    if (!refreshedError && refreshedHoldings) {
+      activeHoldings = refreshedHoldings
+    }
+  }
+
+  const totalInvested = activeHoldings.reduce((sum, h) => sum + Number(h.total_invested), 0)
+  const currentValue = activeHoldings.reduce((sum, h) => sum + Number(h.current_value), 0)
   const totalGainLoss = currentValue - totalInvested
   const totalGainLossPercent = totalInvested > 0 ? (totalGainLoss / totalInvested) * 100 : 0
-  const totalFees = holdings.reduce((sum, h) => sum + Number(h.total_fees), 0)
+  const totalFees = activeHoldings.reduce((sum, h) => sum + Number(h.total_fees), 0)
 
   return {
     data: {
@@ -82,7 +133,7 @@ export async function getPortfolioSummary(): Promise<{
       totalGainLoss,
       totalGainLossPercent: parseFloat(totalGainLossPercent.toFixed(2)),
       totalFees,
-      holdingsCount: holdings.length,
+      holdingsCount: activeHoldings.length,
     },
     error: null,
   }
