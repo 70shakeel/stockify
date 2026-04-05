@@ -31,6 +31,7 @@ export function AddTransactionModal() {
   const [quantity, setQuantity] = useState('')
   const [price, setPrice] = useState('')
   const [fees, setFees] = useState('')
+  const [feeType, setFeeType] = useState<'PKR' | '%'>('PKR')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -52,6 +53,7 @@ export function AddTransactionModal() {
     setQuantity('')
     setPrice('')
     setFees('')
+    setFeeType('PKR')
     setNotes('')
     setError(null)
   }
@@ -61,7 +63,15 @@ export function AddTransactionModal() {
     closeTransactionModal()
   }
 
-  const totalCost = (parseFloat(quantity) || 0) * (parseFloat(price) || 0) + (parseFloat(fees) || 0)
+  const parsedQty = parseInt(quantity) || 0
+  const parsedPrice = parseFloat(price) || 0
+  const rawFee = parseFloat(fees) || 0
+
+  const calculatedFee = feeType === '%' 
+    ? (parsedQty * parsedPrice) * (rawFee / 100)
+    : rawFee
+
+  const totalCost = (parsedQty * parsedPrice) + calculatedFee
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -70,9 +80,9 @@ export function AddTransactionModal() {
     const txnData = {
       symbol: symbol.toUpperCase(),
       type,
-      quantity: parseInt(quantity),
-      price_per_share: parseFloat(price),
-      fees: parseFloat(fees) || 0,
+      quantity: parsedQty,
+      price_per_share: parsedPrice,
+      fees: calculatedFee,
       notes: notes || undefined,
     }
 
@@ -162,15 +172,49 @@ export function AddTransactionModal() {
         </div>
 
         {/* Fees */}
-        <Input
-          label="Fees / Commission (optional)"
-          type="number"
-          placeholder="0.00"
-          step="0.01"
-          min="0"
-          value={fees}
-          onChange={(e) => setFees(e.target.value)}
-        />
+        <div className="space-y-1.5">
+          <label className="block text-sm font-medium text-zinc-300">
+            Fees / Commission (optional)
+          </label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="number"
+                placeholder={feeType === '%' ? "0.15" : "0.00"}
+                step="0.01"
+                min="0"
+                value={fees}
+                onChange={(e) => setFees(e.target.value)}
+                className="w-full rounded-lg border bg-zinc-900/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 border-zinc-700/50 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none hover:border-zinc-600 transition-all duration-200"
+              />
+            </div>
+            <div className="flex bg-zinc-800/50 p-1 rounded-lg border border-zinc-700/50">
+              <button
+                type="button"
+                onClick={() => setFeeType('PKR')}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                  feeType === 'PKR' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                PKR
+              </button>
+              <button
+                type="button"
+                onClick={() => setFeeType('%')}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                  feeType === '%' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                %
+              </button>
+            </div>
+          </div>
+          {feeType === '%' && rawFee > 0 && parsedQty > 0 && parsedPrice > 0 && (
+            <p className="text-xs text-emerald-400/80 mt-1">
+              Calculated fee: {formatCurrency(calculatedFee)}
+            </p>
+          )}
+        </div>
 
         {/* Notes */}
         <div className="space-y-1.5">
