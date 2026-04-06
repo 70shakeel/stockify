@@ -1,14 +1,18 @@
+'use client'
+
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { formatCurrency, formatPercent, formatChange, getChangeColor, cn } from '@/lib/utils'
 import type { PortfolioHolding } from '@/lib/psx/types'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { useAppStore } from '@/store/useAppStore'
 
 interface HoldingsTableProps {
   holdings: PortfolioHolding[]
 }
 
 export function HoldingsTable({ holdings }: HoldingsTableProps) {
+  const openTransactionModal = useAppStore((s) => s.openTransactionModal)
   if (holdings.length === 0) {
     return (
       <Card className="text-center py-16">
@@ -51,10 +55,12 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
             {holdings.map((holding, i) => (
               <tr
                 key={holding.symbol}
+                onClick={() => openTransactionModal(holding.symbol, holding.current_price)}
                 className={cn(
-                  'table-row-hover animate-fade-in opacity-0',
+                  'table-row-hover animate-fade-in opacity-0 cursor-pointer transition-colors hover:bg-zinc-800/60',
                   `stagger-${Math.min(i + 1, 8)}`
                 )}
+                title={`Buy or sell ${holding.symbol}`}
               >
                 {/* Stock */}
                 <td className="px-5 py-4">
