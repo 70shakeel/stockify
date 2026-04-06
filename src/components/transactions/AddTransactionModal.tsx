@@ -31,7 +31,8 @@ export function AddTransactionModal() {
   const [quantity, setQuantity] = useState('')
   const [price, setPrice] = useState('')
   const [fees, setFees] = useState('')
-  const [feeType, setFeeType] = useState<'PKR' | '%'>('PKR')
+  const [feeType, setFeeType] = useState<'PKR' | '%'>('%')
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -53,7 +54,8 @@ export function AddTransactionModal() {
     setQuantity('')
     setPrice('')
     setFees('')
-    setFeeType('PKR')
+    setFeeType('%')
+    setDate(new Date().toISOString().split('T')[0])
     setNotes('')
     setError(null)
   }
@@ -84,6 +86,7 @@ export function AddTransactionModal() {
       price_per_share: parsedPrice,
       fees: calculatedFee,
       notes: notes || undefined,
+      executed_at: new Date(date).toISOString(),
     }
 
     startTransition(async () => {
@@ -214,7 +217,26 @@ export function AddTransactionModal() {
               Calculated fee: {formatCurrency(calculatedFee)}
             </p>
           )}
+          <div className="flex flex-wrap gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => { setFeeType('%'); setFees('0.15') }}
+              className="text-xs font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-md transition-colors cursor-pointer"
+            >
+              0.15% (Standard Fee)
+            </button>
+          </div>
         </div>
+
+        {/* Date */}
+        <Input
+          label="Transaction Date"
+          type="date"
+          value={date}
+          max={new Date().toISOString().split('T')[0]} // Prevent future dates
+          onChange={(e) => setDate(e.target.value)}
+          required
+        />
 
         {/* Notes */}
         <div className="space-y-1.5">
