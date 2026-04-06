@@ -33,9 +33,17 @@ export function Navbar() {
   const supabase = createClient()
 
   useEffect(() => {
+    // Get initial session
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user)
     })
+
+    // Subscribe to auth state changes so UI updates immediately on sign-in/out
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
