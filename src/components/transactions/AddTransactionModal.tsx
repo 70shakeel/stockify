@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useOptimistic, useTransition } from 'react'
+import { useState, useEffect, useOptimistic, useTransition } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { useAppStore } from '@/store/useAppStore'
-import { addTransaction } from '@/actions/transactions'
-import { ArrowUpCircle, ArrowDownCircle } from 'lucide-react'
+import { updateTransaction, addTransaction } from '@/actions/transactions'
+import { searchStocks } from '@/actions/stocks'
+import { ArrowUpCircle, ArrowDownCircle, Search } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 interface OptimisticTransaction {
+  id?: string
   symbol: string
   type: 'BUY' | 'SELL'
   quantity: number
@@ -23,6 +25,7 @@ export function AddTransactionModal() {
     isTransactionModalOpen,
     transactionModalSymbol,
     transactionModalPrice,
+    editingTransaction,
     closeTransactionModal,
   } = useAppStore()
 
@@ -36,17 +39,55 @@ export function AddTransactionModal() {
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  
+  // Autocomplete state
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   const [optimisticTxns, addOptimisticTxn] = useOptimistic<
     OptimisticTransaction[],
     OptimisticTransaction
-  >([], (state, newTxn) => [...state, newTxn])
-
-  // Auto-fill when modal opens with symbol/price
-  useState(() => {
-    if (transactionModalSymbol) setSymbol(transactionModalSymbol)
-    if (transactionModalPrice) setPrice(transactionModalPrice.toString())
+  >([], (state, newTxn) => {
+    // If editing, we could replace it, but optimistic UI for edit in a modal list is tricky.
+    // For simplicity, we just track the pending state globally.
+    return [...state, newTxn]
   })
+
+  // Auto-fill when modal opens
+  useEffect(() => {
+    if (isTransactionModalOpen) {
+      if (editingTransaction) {
+        setType(editingTransaction.type as 'BUY' | 'SELL')
+        setSymbol(editingTransaction.symbol)
+        setQuantity(editingTransaction.quantity.toString())
+        setPrice(editingTransaction.price_per_share.toString())
+        setFees(editingTransaction.fees.toString())
+        setFeeType('PKR')
+        setDate(new Date(editingTransaction.executed_at).toISOString().split('T')[0])
+        setNotes(editingTransaction.notes || '')
+      } else {
+        resetForm()
+        if (transactionModalSymbol) setSymbol(transactionModalSymbol)
+        if (transactionModalPrice) setPrice(transactionModalPrice.toString())
+      }
+    }
+  }, [isTransactionModalOpen, editingTransaction, transactionModalSymbol, transactionModalPrice])
+
+  // Search autocomplete
+  useEffect(() => {
+    if (!symbol || symbol.length < 1 || editingTransaction) {
+      setSuggestions([])
+      return
+    }
+    const timeout = setTimeout(async () => {
+      setIsSearching(true)
+      const res = await searchStocks(symbol)
+      if (!res.error) setSuggestions(res.data)
+      setIsSearching(false)
+    }, 300)
+    return () => clearTimeout(timeout)
+  }, [symbol, editingTransaction])
 
   const resetForm = () => {
     setType('BUY')
@@ -90,13 +131,14 @@ export function AddTransactionModal() {
     }
 
     startTransition(async () => {
-      // Optimistic update
       addOptimisticTxn({
         ...txnData,
         status: 'pending',
       })
 
-      const result = await addTransaction(txnData)
+      const result = editingTransaction
+        ? await updateTransaction(editingTransaction.id, txnData)
+        : await addTransaction(txnData)
 
       if (result.error) {
         setError(result.error)
@@ -110,7 +152,7 @@ export function AddTransactionModal() {
     <Modal
       isOpen={isTransactionModalOpen}
       onClose={handleClose}
-      title="Add Transaction"
+      title={editingTransaction ? "Edit Transaction" : "Add Transaction"}
       size="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -142,14 +184,60 @@ export function AddTransactionModal() {
           </button>
         </div>
 
-        {/* Symbol */}
-        <Input
-          label="Stock Symbol"
-          placeholder="e.g. OGDC, HBL, SYS"
-          value={symbol || transactionModalSymbol || ''}
-          onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-          required
-        />
+        {/* Symbol with Autocomplete */}
+        <div className="relative">
+          <Input
+            label="Stock Symbol"
+            placeholder="e.g. OGDC, HBL, SYS"
+            value={symbol || transactionModalSymbol || ''}
+            onChange={(e) => {
+              setSymbol(e.target.value.toUpperCase())
+              setShowSuggestions(true)
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+            required
+            autoComplete="off"
+          />
+          
+          {showSuggestions && symbol.length >= 1 && !editingTransaction && (
+            <div className="absolute top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-zinc-900 border border-zinc-700/50 rounded-lg shadow-xl z-50">
+              {isSearching ? (
+                <div className="p-3 text-sm text-zinc-500 text-center flex items-center justify-center gap-2">
+                  <div className="w-3 h-3 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+                  Searching local cache...
+                </div>
+              ) : suggestions.length > 0 ? (
+                <div className="py-1">
+                  {suggestions.map((stock) => (
+                    <button
+                      key={stock.symbol}
+                      type="button"
+                      onClick={() => {
+                        setSymbol(stock.symbol)
+                        setShowSuggestions(false)
+                      }}
+                      className="w-full text-left px-3 py-2.5 hover:bg-zinc-800 focus:bg-zinc-800 transition-colors flex flex-col cursor-pointer"
+                    >
+                      <span className="text-sm font-semibold text-zinc-100 flex items-center justify-between">
+                        {stock.symbol}
+                        <span className="text-xs text-emerald-400">{formatCurrency(stock.last_price)}</span>
+                      </span>
+                      <span className="text-xs text-zinc-500 truncate">{stock.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 text-center flex flex-col items-center">
+                  <span className="text-sm font-medium text-emerald-400 mb-1">New Symbol: {symbol}</span>
+                  <span className="text-xs text-zinc-500 leading-relaxed max-w-[200px]">
+                    Not found in local cache. Proceed to save and our backend will fetch {symbol} live from the PSX portal.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Quantity + Price */}
         <div className="grid grid-cols-2 gap-3">
@@ -300,7 +388,10 @@ export function AddTransactionModal() {
             isLoading={isPending}
             className="flex-1"
           >
-            {type === 'BUY' ? 'Buy Shares' : 'Sell Shares'}
+            {editingTransaction 
+              ? 'Save Changes' 
+              : type === 'BUY' ? 'Buy Shares' : 'Sell Shares'
+            }
           </Button>
         </div>
       </form>

@@ -29,7 +29,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             className={cn(
               'w-full rounded-lg border bg-zinc-900/80 px-3 py-2.5 text-sm text-zinc-100',
-              'placeholder:text-zinc-600 transition-all duration-200',
+              'placeholder:text-zinc-600 transition-all duration-200 [color-scheme:dark]',
               'border-zinc-700/50 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20',
               'focus:outline-none',
               'hover:border-zinc-600',
@@ -38,6 +38,16 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
               className
             )}
             {...props}
+            onClick={(e) => {
+              if (props.type === 'date' && 'showPicker' in HTMLInputElement.prototype) {
+                try {
+                  ;(e.target as HTMLInputElement).showPicker()
+                } catch (err) {
+                  // Ignore if already showing or unsupported
+                }
+              }
+              props.onClick?.(e)
+            }}
           />
         </div>
         {error && (

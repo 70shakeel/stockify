@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/Button'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import type { Transaction } from '@/lib/psx/types'
 import { deleteTransaction } from '@/actions/transactions'
-import { Trash2, ArrowUpCircle, ArrowDownCircle } from 'lucide-react'
+import { Trash2, Edit2, ArrowUpCircle, ArrowDownCircle, ChevronUp, ChevronDown } from 'lucide-react'
 import { useState, useTransition } from 'react'
+import { useAppStore } from '@/store/useAppStore'
 
 interface TransactionListProps {
   transactions: Transaction[]
@@ -16,6 +17,10 @@ interface TransactionListProps {
 export function TransactionList({ transactions }: TransactionListProps) {
   const [isPending, startTransition] = useTransition()
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<'date' | 'name' | 'price'>('date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  
+  const openEditTransactionModal = useAppStore(state => state.openEditTransactionModal)
 
   const handleDelete = (id: string) => {
     if (!confirm('Are you sure you want to delete this transaction?')) return
@@ -25,6 +30,30 @@ export function TransactionList({ transactions }: TransactionListProps) {
       setDeletingId(null)
     })
   }
+
+  const handleSort = (type: 'date' | 'name' | 'price') => {
+    if (sortBy === type) {
+      setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+    } else {
+      setSortBy(type)
+      setSortOrder(type === 'name' ? 'asc' : 'desc')
+    }
+  }
+
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const multiplier = sortOrder === 'asc' ? 1 : -1
+    
+    if (sortBy === 'name') {
+      return a.symbol.localeCompare(b.symbol) * multiplier
+    }
+    if (sortBy === 'price') {
+      const aTotal = a.price_per_share * a.quantity
+      const bTotal = b.price_per_share * b.quantity
+      return (aTotal - bTotal) * multiplier
+    }
+    // Default to date
+    return (new Date(a.executed_at).getTime() - new Date(b.executed_at).getTime()) * multiplier
+  })
 
   if (transactions.length === 0) {
     return (
@@ -39,8 +68,48 @@ export function TransactionList({ transactions }: TransactionListProps) {
   }
 
   return (
-    <div className="space-y-2">
-      {transactions.map((txn, i) => (
+    <div className="space-y-4">
+      {/* Sort Controls */}
+      <div className="flex items-center justify-between bg-zinc-900/50 p-2 rounded-lg border border-zinc-800">
+        <span className="text-sm text-zinc-400 px-2 flex items-center gap-2">
+          Sort by:
+        </span>
+        <div className="flex gap-1">
+          <button
+            onClick={() => handleSort('date')}
+            className={cn(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1",
+              sortBy === 'date' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+            )}
+          >
+            Date
+            {sortBy === 'date' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+          </button>
+          <button
+            onClick={() => handleSort('name')}
+            className={cn(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1",
+              sortBy === 'name' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+            )}
+          >
+            Name
+            {sortBy === 'name' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+          </button>
+          <button
+            onClick={() => handleSort('price')}
+            className={cn(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1",
+              sortBy === 'price' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+            )}
+          >
+            Total Amount
+            {sortBy === 'price' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {sortedTransactions.map((txn, i) => (
         <Card
           key={txn.id}
           padding="none"
@@ -115,19 +184,33 @@ export function TransactionList({ transactions }: TransactionListProps) {
               </p>
             </div>
 
-            {/* Delete button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleDelete(txn.id)}
-              disabled={isPending}
-              className="text-zinc-600 hover:text-red-400 shrink-0"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
+            {/* Actions */}
+            <div className="flex items-center gap-1 shrink-0 ml-2 border-l border-zinc-800 pl-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => openEditTransactionModal(txn)}
+                disabled={isPending}
+                className="text-zinc-500 hover:text-emerald-400 p-2 h-auto"
+                title="Edit Transaction"
+              >
+                <Edit2 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleDelete(txn.id)}
+                disabled={isPending}
+                className="text-zinc-500 hover:text-red-400 p-2 h-auto"
+                title="Delete Transaction"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </Card>
       ))}
+      </div>
     </div>
   )
 }

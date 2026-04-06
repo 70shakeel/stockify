@@ -24,7 +24,10 @@ async function TransactionContent() {
             Your buy and sell transaction history
           </p>
         </div>
-        <TransactionAddButton />
+        <div className="flex items-center gap-2">
+          <SeedSymbolsButton />
+          <TransactionAddButton />
+        </div>
       </div>
 
       {error && (
@@ -49,6 +52,7 @@ function AddTransactionBtn() {
 }
 
 import { ClientAddButton } from './ClientAddButton'
+import { SeedSymbolsButton } from './SeedSymbolsButton'
 
 export default function TransactionsPage() {
   return (

@@ -1,11 +1,14 @@
 import { create } from 'zustand'
+import type { Transaction } from '@/lib/psx/types'
 
 interface AppState {
   // Modal state
   isTransactionModalOpen: boolean
   transactionModalSymbol: string | null
   transactionModalPrice: number | null
+  editingTransaction: Transaction | null
   openTransactionModal: (symbol?: string, price?: number) => void
+  openEditTransactionModal: (txn: Transaction) => void
   closeTransactionModal: () => void
 
   // Search
@@ -23,17 +26,27 @@ export const useAppStore = create<AppState>((set) => ({
   isTransactionModalOpen: false,
   transactionModalSymbol: null,
   transactionModalPrice: null,
+  editingTransaction: null,
   openTransactionModal: (symbol, price) =>
     set({
       isTransactionModalOpen: true,
       transactionModalSymbol: symbol || null,
       transactionModalPrice: price || null,
+      editingTransaction: null,
+    }),
+  openEditTransactionModal: (txn) =>
+    set({
+      isTransactionModalOpen: true,
+      editingTransaction: txn,
+      transactionModalSymbol: null,
+      transactionModalPrice: null,
     }),
   closeTransactionModal: () =>
     set({
       isTransactionModalOpen: false,
       transactionModalSymbol: null,
       transactionModalPrice: null,
+      editingTransaction: null,
     }),
 
   // Search

@@ -114,6 +114,59 @@ export async function deleteTransaction(transactionId: string) {
   return { error: null }
 }
 
+export async function updateTransaction(transactionId: string, input: TransactionInput) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'You must be logged in' }
+  }
+
+  if (!input.symbol || !input.type || !input.quantity || input.price_per_share === undefined) {
+    return { error: 'Missing required fields' }
+  }
+
+  const normalizedSymbol = input.symbol.toUpperCase().trim()
+
+  await supabase.from('stocks').upsert({
+    symbol: normalizedSymbol,
+    name: normalizedSymbol,
+    sector: 'Unknown',
+  }, { onConflict: 'symbol', ignoreDuplicates: true })
+
+  refreshStockPrice(normalizedSymbol).catch(console.error)
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .update({
+      symbol: normalizedSymbol,
+      type: input.type,
+      quantity: input.quantity,
+      price_per_share: input.price_per_share,
+      fees: input.fees || 0,
+      notes: input.notes || null,
+      executed_at: input.executed_at || new Date().toISOString(),
+    })
+    .eq('id', transactionId)
+    .eq('user_id', user.id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Transaction update error:', error)
+    return { error: error.message }
+  }
+
+  revalidatePath('/portfolio')
+  revalidatePath('/transactions')
+  revalidatePath('/')
+
+  return { data, error: null }
+}
+
 export async function getTransactions() {
   const supabase = await createClient()
 

@@ -6,22 +6,16 @@ export async function searchStocks(query: string) {
   const supabase = await createClient()
 
   if (!query || query.length < 1) {
-    // Return all stocks sorted by symbol
-    const { data, error } = await supabase
-      .from('stocks')
-      .select('symbol, name, sector, last_price, change, change_percent, volume')
-      .order('symbol')
-      .limit(50)
-
-    return { data: data || [], error: error?.message || null }
+    return { data: [], error: null }
   }
 
   const { data, error } = await supabase
     .from('stocks')
     .select('symbol, name, sector, last_price, change, change_percent, volume')
-    .or(`symbol.ilike.%${query}%,name.ilike.%${query}%,sector.ilike.%${query}%`)
+    .or(`symbol.ilike.${query}%,name.ilike.${query}%`)
+    // Prioritise exact symbol prefix matches first
     .order('symbol')
-    .limit(20)
+    .limit(12)
 
   return { data: data || [], error: error?.message || null }
 }
@@ -81,5 +75,54 @@ export async function refreshStockPrice(symbol: string) {
   } catch (error) {
     console.error('Refresh stock price error:', error)
     return { error: 'Failed to refresh stock price' }
+  }
+}
+
+export async function seedAllPSXSymbols() {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Not authenticated', count: 0 }
+
+  try {
+    const res = await fetch('https://dps.psx.com.pk/symbols', {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      next: { revalidate: 0 },
+    })
+    if (!res.ok) return { error: 'Failed to fetch PSX symbols', count: 0 }
+
+    const symbols: Array<{ symbol: string; name: string; sectorName: string; isETF: boolean; isDebt: boolean }> =
+      await res.json()
+
+    // Batch into chunks of 100 to avoid Supabase payload limits
+    const CHUNK = 100
+    let total = 0
+    for (let i = 0; i < symbols.length; i += CHUNK) {
+      const chunk = symbols.slice(i, i + CHUNK).map((s) => ({
+        symbol: s.symbol,
+        name: s.name,
+        sector: s.sectorName,
+        // Leave price fields as null/0 so they get refreshed on first use
+        last_price: 0,
+      }))
+
+      const { error } = await supabase
+        .from('stocks')
+        .upsert(chunk, { onConflict: 'symbol', ignoreDuplicates: true }) // Don't overwrite existing prices
+
+      if (error) {
+        console.error('Seed chunk error:', error)
+      } else {
+        total += chunk.length
+      }
+    }
+
+    return { error: null, count: total }
+  } catch (err) {
+    console.error('Seed failed:', err)
+    return { error: 'Unexpected error during seed', count: 0 }
   }
 }
