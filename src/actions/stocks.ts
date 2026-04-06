@@ -38,19 +38,46 @@ export async function getStockBySymbol(symbol: string) {
   return { data, error: error?.message || null }
 }
 
+import { scrapeStockData } from '@/lib/psx/scraper'
+
 export async function refreshStockPrice(symbol: string) {
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/psx/${symbol}`,
-      { cache: 'no-store' }
-    )
-
-    if (!response.ok) {
-      return { error: 'Failed to refresh stock price' }
+    const supabase = await createClient()
+    const normalizedTicker = symbol.toUpperCase().trim()
+    
+    // Scrape data directly via our high-speed DOM parser (Cheerio)
+    const stockData = await scrapeStockData(normalizedTicker)
+    if (!stockData) {
+       return { error: `Could not fetch data for ${normalizedTicker}` }
     }
 
-    const result = await response.json()
-    return { data: result.data, error: null }
+    // Upsert into stocks cache using the current user's authenticated runtime session
+    const { error: upsertError } = await supabase
+      .from('stocks')
+      .upsert(
+        {
+          symbol: stockData.symbol,
+          name: stockData.name,
+          sector: stockData.sector,
+          last_price: stockData.lastPrice,
+          change: stockData.change,
+          change_percent: stockData.changePercent,
+          volume: stockData.volume,
+          high: stockData.high,
+          low: stockData.low,
+          open: stockData.open,
+          close: stockData.close,
+          last_updated: stockData.lastUpdated,
+        },
+        { onConflict: 'symbol' }
+      )
+
+    if (upsertError) {
+      console.error('Failed to upsert stock cache:', upsertError)
+      return { error: 'Failed to save refreshed stock data' }
+    }
+
+    return { data: stockData, error: null }
   } catch (error) {
     console.error('Refresh stock price error:', error)
     return { error: 'Failed to refresh stock price' }

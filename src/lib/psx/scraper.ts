@@ -15,53 +15,29 @@ function markFetched(ticker: string) {
   lastFetchMap.set(ticker, Date.now())
 }
 
-/**
- * Scrape stock data using TinyFish AI agent
- */
-async function scrapeWithTinyFish(ticker: string): Promise<StockData | null> {
-  const apiKey = process.env.TINYFISH_API_KEY
-  if (!apiKey) return null
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { TinyFish, EventType, RunStatus } = await import('@tiny-fish/sdk')
-    const client = new TinyFish({ apiKey })
-
-    const result = await client.agent.run({
-      url: `https://dps.psx.com.pk/company/${ticker}`,
-      goal: `Extract the following stock data for ${ticker} as JSON: symbol, name, sector, lastPrice (current market price), change (price change today), changePercent (percentage change), volume (today's trading volume), high (today's high), low (today's low), open (today's open), close (yesterday's close). Return numbers as actual numbers, not strings.`,
-    })
-
-    if (result && result.result) {
-      const data = result.result as Record<string, unknown>
-      return {
-        symbol: String(data.symbol || ticker).toUpperCase(),
-        name: String(data.name || ticker),
-        sector: String(data.sector || 'Unknown'),
-        lastPrice: Number(data.lastPrice) || 0,
-        change: Number(data.change) || 0,
-        changePercent: Number(data.changePercent) || 0,
-        volume: Number(data.volume) || 0,
-        high: Number(data.high) || 0,
-        low: Number(data.low) || 0,
-        open: Number(data.open) || 0,
-        close: Number(data.close) || 0,
-        lastUpdated: new Date().toISOString(),
-      }
-    }
-    return null
-  } catch (error) {
-    console.error(`TinyFish scrape failed for ${ticker}:`, error)
-    return null
-  }
+function extractNumber(text: string | undefined): number {
+  if (!text) return 0
+  // Remove commas first, then match the first valid number structure
+  const withoutCommas = text.replace(/,/g, '')
+  const match = withoutCommas.match(/[0-9]+(\.[0-9]+)?/)
+  return match ? parseFloat(match[0]) : 0
 }
 
 /**
- * Fallback: Scrape stock data using Cheerio from PSX website
+ * Main scraper function — fetches real-time PSX stock data directly
  */
-async function scrapeWithCheerio(ticker: string): Promise<StockData | null> {
+export async function scrapeStockData(ticker: string): Promise<StockData | null> {
+  const normalizedTicker = ticker.toUpperCase().trim()
+
+  if (isThrottled(normalizedTicker)) {
+    console.log(`Throttled: ${normalizedTicker} was fetched recently`)
+    return null
+  }
+
+  markFetched(normalizedTicker)
+
   try {
-    const url = `https://dps.psx.com.pk/company/${ticker}`
+    const url = `https://dps.psx.com.pk/company/${normalizedTicker}`
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
@@ -75,64 +51,49 @@ async function scrapeWithCheerio(ticker: string): Promise<StockData | null> {
     const html = await response.text()
     const $ = cheerio.load(html)
 
-    // Parse data from the PSX company page
-    const name = $('h1.company-name, .quote__name, h1').first().text().trim() || ticker
-    const sector = $('.sector-name, .quote__sector').first().text().trim() || 'Unknown'
+    // Ensure page actually loaded a valid company quote
+    const name = $('.quote__name').first().text().trim() || normalizedTicker
+    const sector = $('.quote__sector').first().text().trim() || 'Unknown'
 
-    // Try to extract price data from various possible selectors
-    const priceText = $('.quote__close, .current-price, .price').first().text().trim()
-    const changeText = $('.quote__change, .price-change').first().text().trim()
-    const volumeText = $('.quote__volume, .volume').first().text().trim()
-    const highText = $('.quote__high, .day-high').first().text().trim()
-    const lowText = $('.quote__low, .day-low').first().text().trim()
-    const openText = $('.quote__open, .day-open').first().text().trim()
+    const priceText = $('.quote__close').first().text().trim()
+    const lastPrice = extractNumber(priceText)
 
-    const lastPrice = parseFloat(priceText.replace(/[^0-9.-]/g, '')) || 0
-    const change = parseFloat(changeText.replace(/[^0-9.-]/g, '')) || 0
-    const changePercent = lastPrice > 0 ? (change / (lastPrice - change)) * 100 : 0
+    const changeContainer = $('.quote__change').first()
+    const isNegativeCss = changeContainer.hasClass('change__text--neg')
+    
+    let change = extractNumber(changeContainer.find('.change__value').first().text())
+    let changePercent = extractNumber(changeContainer.find('.change__percent').first().text())
+    
+    if (isNegativeCss) {
+      change = -change
+      changePercent = -changePercent
+    }
+
+    const volumeText = $('.company__quote .stats_label:contains("Volume")').first().next('.stats_value').text()
+    const volume = parseInt(volumeText.replace(/[^0-9]/g, '')) || 0
+
+    const dayRange = $('.company__quote .stats_label:contains("DAY RANGE")').first().next('.stats_value').find('.numRange')
+    const low = extractNumber(dayRange.attr('data-low')) || lastPrice
+    const high = extractNumber(dayRange.attr('data-high')) || lastPrice
 
     return {
-      symbol: ticker.toUpperCase(),
+      symbol: normalizedTicker,
       name,
       sector,
       lastPrice,
       change,
       changePercent: parseFloat(changePercent.toFixed(4)),
-      volume: parseInt(volumeText.replace(/[^0-9]/g, '')) || 0,
-      high: parseFloat(highText.replace(/[^0-9.-]/g, '')) || lastPrice,
-      low: parseFloat(lowText.replace(/[^0-9.-]/g, '')) || lastPrice,
-      open: parseFloat(openText.replace(/[^0-9.-]/g, '')) || lastPrice,
+      volume,
+      high,
+      low,
+      open: lastPrice - change, // Estimated if strictly unavailable natively
       close: lastPrice - change,
       lastUpdated: new Date().toISOString(),
     }
   } catch (error) {
-    console.error(`Cheerio scrape failed for ${ticker}:`, error)
+    console.error(`PSX Scrape failed for ${normalizedTicker}:`, error)
     return null
   }
-}
-
-/**
- * Main scraper function — tries TinyFish first, falls back to Cheerio
- */
-export async function scrapeStockData(ticker: string): Promise<StockData | null> {
-  const normalizedTicker = ticker.toUpperCase().trim()
-
-  if (isThrottled(normalizedTicker)) {
-    console.log(`Throttled: ${normalizedTicker} was fetched recently`)
-    return null
-  }
-
-  markFetched(normalizedTicker)
-
-  // Try TinyFish first
-  let data = await scrapeWithTinyFish(normalizedTicker)
-
-  // Fallback to Cheerio
-  if (!data) {
-    data = await scrapeWithCheerio(normalizedTicker)
-  }
-
-  return data
 }
 
 /**

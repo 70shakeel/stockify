@@ -5,6 +5,39 @@ import type { PortfolioHolding, PortfolioSummaryData } from '@/lib/psx/types'
 
 import { refreshStockPrice } from '@/actions/stocks'
 
+async function ensureFreshPrices(supabase: any, symbols: string[]) {
+  if (!symbols.length) return false
+
+  // Get raw stock cache entries to check their last_updated timestamps
+  const { data: stocks } = await supabase
+    .from('stocks')
+    .select('symbol, last_price, last_updated')
+    .in('symbol', symbols)
+
+  if (!stocks) return false
+
+  const now = Date.now()
+  const STALE_MS = 15 * 60 * 1000 // 15 minutes
+
+  // Find stocks that are either price=0 OR haven't been updated in 15 minutes
+  const missingOrStale = stocks
+    .filter((s: any) => {
+      if (Number(s.last_price) === 0) return true
+      if (!s.last_updated) return true
+      const age = now - new Date(s.last_updated).getTime()
+      return age > STALE_MS
+    })
+    .map((s: any) => s.symbol)
+
+  if (missingOrStale.length > 0) {
+    // Refresh all stale stocks
+    await Promise.all(missingOrStale.map((sym: string) => refreshStockPrice(sym)))
+    return true // Returns true if a refresh occurred so the caller knows to refetch the view
+  }
+
+  return false
+}
+
 export async function getPortfolioHoldings(): Promise<{
   data: PortfolioHolding[]
   error: string | null
@@ -31,17 +64,11 @@ export async function getPortfolioHoldings(): Promise<{
   }
 
   const holdings = (data as PortfolioHolding[]) || []
+  const symbols = holdings.map(h => h.symbol)
 
-  // Check if any holding has a cached price of 0 (e.g. from an un-fetched placeholder)
-  const missingPriceSymbols = holdings
-    .filter(h => Number(h.current_price) === 0)
-    .map(h => h.symbol)
+  const wasRefreshed = await ensureFreshPrices(supabase, symbols)
 
-  if (missingPriceSymbols.length > 0) {
-    // Wait for all missing stocks to be accurately scraped
-    await Promise.all(missingPriceSymbols.map(sym => refreshStockPrice(sym)))
-
-    // Refetch holdings with accurate pricing data
+  if (wasRefreshed) {
     const { data: refreshedData, error: refreshedError } = await supabase
       .from('portfolio_holdings')
       .select('*')
@@ -49,11 +76,9 @@ export async function getPortfolioHoldings(): Promise<{
       .gt('net_quantity', 0)
       .order('current_value', { ascending: false })
 
-    if (refreshedError) {
-      return { data: holdings, error: refreshedError.message } // fallback to original
+    if (!refreshedError) {
+      return { data: (refreshedData as PortfolioHolding[]) || [], error: null }
     }
-    
-    return { data: (refreshedData as PortfolioHolding[]) || [], error: null }
   }
 
   return { data: holdings, error: null }
@@ -97,18 +122,12 @@ export async function getPortfolioSummary(): Promise<{
     }
   }
 
-  // Check if any holding has a cached price of 0
-  const missingPriceSymbols = holdings
-    .filter(h => Number(h.current_price) === 0)
-    .map(h => h.symbol)
-
+  const symbols = holdings.map(h => h.symbol)
   let activeHoldings = holdings
 
-  if (missingPriceSymbols.length > 0) {
-    // Wait for all missing stocks to be accurately scraped
-    await Promise.all(missingPriceSymbols.map(sym => refreshStockPrice(sym)))
+  const wasRefreshed = await ensureFreshPrices(supabase, symbols)
 
-    // Refetch holdings with accurate pricing data
+  if (wasRefreshed) {
     const { data: refreshedHoldings, error: refreshedError } = await supabase
       .from('portfolio_holdings')
       .select('*')
@@ -116,7 +135,7 @@ export async function getPortfolioSummary(): Promise<{
       .gt('net_quantity', 0)
 
     if (!refreshedError && refreshedHoldings) {
-      activeHoldings = refreshedHoldings
+      activeHoldings = refreshedHoldings as PortfolioHolding[]
     }
   }
 

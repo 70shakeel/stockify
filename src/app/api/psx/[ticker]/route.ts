@@ -1,14 +1,6 @@
 import { type NextRequest } from 'next/server'
 import { scrapeStockData } from '@/lib/psx/scraper'
-import { createClient } from '@supabase/supabase-js'
-
-// Use service-level client for upserting stock cache (no RLS needed for public data)
-function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  )
-}
+import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +20,7 @@ export async function GET(
   const normalizedTicker = ticker.toUpperCase().trim()
 
   try {
-    const supabase = getAdminClient()
+    const supabase = await createClient()
 
     // Check cache first — return cached if updated within last 5 minutes
     const { data: cached } = await supabase
