@@ -215,6 +215,9 @@ export function AddTransactionModal() {
                       type="button"
                       onClick={() => {
                         setSymbol(stock.symbol)
+                        if (stock.last_price > 0) {
+                          setPrice(stock.last_price.toString())
+                        }
                         setShowSuggestions(false)
                       }}
                       className="w-full text-left px-3 py-2.5 hover:bg-zinc-800 focus:bg-zinc-800 transition-colors flex flex-col cursor-pointer"
