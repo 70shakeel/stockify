@@ -73,13 +73,21 @@ export function TransactionList({ transactions }: TransactionListProps) {
                 <span className="text-sm font-semibold text-zinc-100">
                   {txn.symbol}
                 </span>
+                <span className="text-xs text-zinc-400">•</span>
+                <span className="text-xs text-zinc-400 border border-zinc-700/50 rounded px-1.5 py-0.5">
+                  {new Date(txn.executed_at).toLocaleDateString('en-PK', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric'
+                  })}
+                </span>
                 <Badge
                   variant={txn.type === 'BUY' ? 'success' : 'danger'}
                 >
                   {txn.type}
                 </Badge>
               </div>
-              <p className="text-xs text-zinc-500 mt-0.5">
+              <p className="text-xs text-zinc-500 mt-1">
                 {txn.quantity} shares @ {formatCurrency(txn.price_per_share)}
                 {txn.fees > 0 && ` • Fee: ${formatCurrency(txn.fees)}`}
               </p>
@@ -98,8 +106,12 @@ export function TransactionList({ transactions }: TransactionListProps) {
               )}>
                 {txn.type === 'BUY' ? '-' : '+'}{formatCurrency(txn.quantity * txn.price_per_share)}
               </p>
-              <p className="text-xs text-zinc-500 mt-0.5">
-                {formatDate(txn.executed_at)}
+              <p className="text-xs text-zinc-500 mt-0.5" title={new Date(txn.executed_at).toLocaleTimeString()}>
+                {new Date(txn.executed_at).toLocaleDateString('en-PK', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric'
+                })}
               </p>
             </div>
 
