@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { formatCurrency, formatPercent, formatChange, getChangeColor, cn } from '@/lib/utils'
 import type { PortfolioHolding } from '@/lib/psx/types'
 import { TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown } from 'lucide-react'
@@ -25,6 +27,7 @@ function SortIcon({ col, sortBy, sortOrder }: { col: SortKey; sortBy: SortKey; s
 }
 
 export function HoldingsTable({ holdings }: HoldingsTableProps) {
+  const router = useRouter()
   const openTransactionModal = useAppStore((s) => s.openTransactionModal)
   const [sortBy, setSortBy] = useState<SortKey>('current_value')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
@@ -86,18 +89,21 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
               <th className={cn(thClass, 'px-5 text-right')} onClick={() => handleSort('unrealized_gain_loss_percent')}>
                 P&L % <SortIcon col="unrealized_gain_loss_percent" sortBy={sortBy} sortOrder={sortOrder} />
               </th>
+              <th className={cn(thClass, 'px-5 text-right')}>
+                Action
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/50">
             {sorted.map((holding, i) => (
               <tr
                 key={holding.symbol}
-                onClick={() => openTransactionModal(holding.symbol, holding.current_price)}
+                onClick={() => router.push(`/transactions?symbol=${holding.symbol}`)}
                 className={cn(
                   'animate-fade-in opacity-0 cursor-pointer transition-colors hover:bg-zinc-800/60',
                   `stagger-${Math.min(i + 1, 8)}`
                 )}
-                title={`Buy or sell ${holding.symbol}`}
+                title={`View transactions for ${holding.symbol}`}
               >
                 {/* Stock */}
                 <td className="px-5 py-4">
@@ -164,6 +170,21 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                       </Badge>
                     </div>
                   </div>
+                </td>
+
+                {/* Actions */}
+                <td className="px-5 py-4 text-right">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs font-medium"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openTransactionModal(holding.symbol, holding.current_price)
+                    }}
+                  >
+                    Trade
+                  </Button>
                 </td>
               </tr>
             ))}

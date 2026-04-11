@@ -167,7 +167,7 @@ export async function updateTransaction(transactionId: string, input: Transactio
   return { data, error: null }
 }
 
-export async function getTransactions() {
+export async function getTransactions(symbol?: string) {
   const supabase = await createClient()
 
   const {
@@ -178,11 +178,17 @@ export async function getTransactions() {
     return { data: [], error: 'Not authenticated' }
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('transactions')
     .select('*')
     .eq('user_id', user.id)
     .order('executed_at', { ascending: false })
+
+  if (symbol) {
+    query = query.eq('symbol', symbol.toUpperCase())
+  }
+
+  const { data, error } = await query
 
   if (error) {
     return { data: [], error: error.message }

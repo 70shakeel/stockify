@@ -12,16 +12,20 @@ export const metadata: Metadata = {
   description: 'View and manage your buy/sell transaction history.',
 }
 
-async function TransactionContent() {
-  const { data, error } = await getTransactions()
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>
+
+async function TransactionContent({ symbol }: { symbol?: string }) {
+  const { data, error } = await getTransactions(symbol)
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">Transactions</h1>
+          <h1 className="text-2xl font-bold text-zinc-100">
+            {symbol ? `Transactions: ${symbol.toUpperCase()}` : 'Transactions'}
+          </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Your buy and sell transaction history
+            {symbol ? `Your buy and sell history for ${symbol.toUpperCase()}` : 'Your buy and sell transaction history'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -54,7 +58,11 @@ function AddTransactionBtn() {
 import { ClientAddButton } from './ClientAddButton'
 import { SeedSymbolsButton } from './SeedSymbolsButton'
 
-export default function TransactionsPage() {
+export default async function TransactionsPage({ searchParams }: { searchParams: SearchParams }) {
+  const resolvedParams = await searchParams
+  const symbolParam = resolvedParams?.symbol
+  const symbol = Array.isArray(symbolParam) ? symbolParam[0] : symbolParam
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Suspense
@@ -63,8 +71,9 @@ export default function TransactionsPage() {
             <Spinner size="lg" />
           </div>
         }
+        key={symbol}
       >
-        <TransactionContent />
+        <TransactionContent symbol={symbol} />
       </Suspense>
     </div>
   )
