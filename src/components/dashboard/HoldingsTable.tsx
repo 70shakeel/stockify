@@ -10,7 +10,7 @@ import type { PortfolioHolding } from '@/lib/psx/types'
 import { TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 
-type SortKey = 'symbol' | 'net_quantity' | 'avg_cost' | 'current_price' | 'current_value' | 'unrealized_gain_loss_percent'
+type SortKey = 'symbol' | 'net_quantity' | 'avg_cost' | 'current_price' | 'current_value' | 'unrealized_gain_loss_percent' | 'unrealized_gain_loss'
 type SortOrder = 'asc' | 'desc'
 
 interface HoldingsTableProps {
@@ -86,6 +86,9 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
               <th className={cn(thClass, 'text-right')} onClick={() => handleSort('current_value')}>
                 Value <SortIcon col="current_value" sortBy={sortBy} sortOrder={sortOrder} />
               </th>
+              <th className={cn(thClass, 'text-right')} onClick={() => handleSort('unrealized_gain_loss')}>
+                P&L <SortIcon col="unrealized_gain_loss" sortBy={sortBy} sortOrder={sortOrder} />
+              </th>
               <th className={cn(thClass, 'px-5 text-right')} onClick={() => handleSort('unrealized_gain_loss_percent')}>
                 P&L % <SortIcon col="unrealized_gain_loss_percent" sortBy={sortBy} sortOrder={sortOrder} />
               </th>
@@ -150,26 +153,26 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                   <span className="text-sm font-semibold text-zinc-100">{formatCurrency(holding.current_value)}</span>
                 </td>
 
-                {/* P&L */}
+                {/* P&L Value */}
+                <td className="px-4 py-4 text-right">
+                  <span className={cn('text-sm font-semibold', getChangeColor(holding.unrealized_gain_loss))}>
+                    {formatChange(holding.unrealized_gain_loss)}
+                  </span>
+                </td>
+
+                {/* P&L % */}
                 <td className="px-5 py-4 text-right">
-                  <div>
-                    <span className={cn('text-sm font-semibold', getChangeColor(holding.unrealized_gain_loss))}>
-                      {formatChange(holding.unrealized_gain_loss)}
-                    </span>
-                    <div className="mt-0.5">
-                      <Badge
-                        variant={
-                          holding.unrealized_gain_loss_percent > 0
-                            ? 'success'
-                            : holding.unrealized_gain_loss_percent < 0
-                              ? 'danger'
-                              : 'default'
-                        }
-                      >
-                        {formatPercent(holding.unrealized_gain_loss_percent)}
-                      </Badge>
-                    </div>
-                  </div>
+                  <Badge
+                    variant={
+                      holding.unrealized_gain_loss_percent > 0
+                        ? 'success'
+                        : holding.unrealized_gain_loss_percent < 0
+                          ? 'danger'
+                          : 'default'
+                    }
+                  >
+                    {formatPercent(holding.unrealized_gain_loss_percent)}
+                  </Badge>
                 </td>
 
                 {/* Actions */}
