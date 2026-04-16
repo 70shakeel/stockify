@@ -16,13 +16,13 @@ interface PortfolioTabsProps {
 }
 
 const tabs: Array<{ id: PortfolioTab; label: string }> = [
-  { id: 'positions', label: 'Positions' },
   { id: 'holdings', label: 'Holdings' },
+  { id: 'positions', label: 'Positions' },
   { id: 'investments', label: 'Investments' },
 ]
 
 export function PortfolioTabs({ positions, holdings, investments }: PortfolioTabsProps) {
-  const [activeTab, setActiveTab] = useState<PortfolioTab>('positions')
+  const [activeTab, setActiveTab] = useState<PortfolioTab>('holdings')
 
   return (
     <div className="space-y-4">
