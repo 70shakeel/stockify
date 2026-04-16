@@ -11,6 +11,19 @@ export function formatCurrency(amount: number): string {
 }
 
 /**
+ * Format a number as PKR currency with no fractional digits.
+ * Used for dashboard "top cards" where the user wants whole amounts.
+ */
+export function formatCurrencyNoDecimals(amount: number): string {
+  return new Intl.NumberFormat('en-PK', {
+    style: 'currency',
+    currency: 'PKR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
+/**
  * Format a number with commas
  */
 export function formatNumber(num: number): string {

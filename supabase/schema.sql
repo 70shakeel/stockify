@@ -51,7 +51,22 @@ CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_symbol ON transactions(symbol);
 CREATE INDEX IF NOT EXISTS idx_transactions_executed_at ON transactions(executed_at DESC);
 
--- 4. PORTFOLIO HOLDINGS VIEW
+-- 4. INVESTMENTS TABLE
+-- Records cash/fund movements in and out of the account
+CREATE TABLE IF NOT EXISTS investments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('ADD', 'WITHDRAW')),
+  amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+  notes TEXT,
+  invested_at TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_investments_user_id ON investments(user_id);
+CREATE INDEX IF NOT EXISTS idx_investments_invested_at ON investments(invested_at DESC);
+
+-- 5. PORTFOLIO HOLDINGS VIEW
 -- Calculates average cost, current value, and unrealized gain/loss per symbol
 CREATE OR REPLACE VIEW portfolio_holdings AS
 SELECT
@@ -111,7 +126,7 @@ GROUP BY t.user_id, t.symbol, s.name, s.sector, s.last_price, s.change, s.change
 
 
 -- ============================================
--- 5. ROW LEVEL SECURITY (RLS)
+-- 6. ROW LEVEL SECURITY (RLS)
 -- ============================================
 
 -- Profiles: users can only access their own profile
@@ -148,6 +163,25 @@ CREATE POLICY "Users can delete own transactions"
   ON transactions FOR DELETE
   USING (auth.uid() = user_id);
 
+-- Investments: users can only CRUD their own fund entries
+ALTER TABLE investments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own investments"
+  ON investments FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own investments"
+  ON investments FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own investments"
+  ON investments FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own investments"
+  ON investments FOR DELETE
+  USING (auth.uid() = user_id);
+
 -- Stocks: public read, authenticated users can write
 ALTER TABLE stocks ENABLE ROW LEVEL SECURITY;
 
@@ -165,7 +199,7 @@ CREATE POLICY "Authenticated users can update stocks"
 
 
 -- ============================================
--- 6. TRIGGERS & FUNCTIONS
+-- 7. TRIGGERS & FUNCTIONS
 -- ============================================
 
 -- Auto-create profile on user signup
@@ -197,7 +231,7 @@ CREATE OR REPLACE TRIGGER profiles_updated_at
 
 
 -- ============================================
--- 7. SEED DATA (Popular PSX Stocks)
+-- 8. SEED DATA (Popular PSX Stocks)
 -- ============================================
 
 INSERT INTO stocks (symbol, name, sector, last_price) VALUES

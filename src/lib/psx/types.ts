@@ -41,6 +41,28 @@ export interface PortfolioHolding {
   transaction_count: number
 }
 
+export interface PortfolioPosition {
+  symbol: string
+  stock_name: string
+  current_price: number
+  bought_quantity: number
+  sold_quantity: number
+  open_quantity: number
+  avg_buy_cost: number
+  avg_sale_price: number
+  avg_open_cost: number
+  total_buy_cost: number
+  total_sale_value: number
+  invested_amount: number
+  realized_proceeds: number
+  realized_gain_loss: number
+  unrealized_gain_loss: number
+  total_gain_loss: number
+  total_gain_loss_percent: number
+  total_fees: number
+  status: 'OPEN' | 'CLOSED'
+}
+
 export interface Transaction {
   id: string
   user_id: string
@@ -64,6 +86,23 @@ export interface TransactionInput {
   executed_at?: string
 }
 
+export interface InvestmentEntry {
+  id: string
+  user_id: string
+  type: 'ADD' | 'WITHDRAW'
+  amount: number
+  notes: string | null
+  invested_at: string
+  created_at: string
+}
+
+export interface InvestmentInput {
+  type: 'ADD' | 'WITHDRAW'
+  amount: number
+  notes?: string
+  invested_at?: string
+}
+
 export interface NewsItem {
   title: string
   description: string
@@ -80,4 +119,10 @@ export interface PortfolioSummaryData {
   totalGainLossPercent: number
   totalFees: number
   holdingsCount: number
+  realizedGainLoss: number
+  potentialGainLoss: number
+  totalPNL: number
+  investmentAvailable: number
+  totalAddedFunds: number
+  totalWithdrawnFunds: number
 }

@@ -10,7 +10,7 @@ import type { PortfolioHolding } from '@/lib/psx/types'
 import { TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 
-type SortKey = 'symbol' | 'net_quantity' | 'avg_cost' | 'current_price' | 'current_value' | 'unrealized_gain_loss_percent' | 'unrealized_gain_loss'
+type SortKey = 'symbol' | 'net_quantity' | 'avg_cost' | 'total_invested' | 'current_price' | 'current_value' | 'unrealized_gain_loss_percent' | 'unrealized_gain_loss'
 type SortOrder = 'asc' | 'desc'
 
 interface HoldingsTableProps {
@@ -80,6 +80,9 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
               <th className={cn(thClass, 'text-right')} onClick={() => handleSort('avg_cost')}>
                 Avg Cost <SortIcon col="avg_cost" sortBy={sortBy} sortOrder={sortOrder} />
               </th>
+              <th className={cn(thClass, 'text-right')} onClick={() => handleSort('total_invested')}>
+                Invested <SortIcon col="total_invested" sortBy={sortBy} sortOrder={sortOrder} />
+              </th>
               <th className={cn(thClass, 'text-right')} onClick={() => handleSort('current_price')}>
                 Current <SortIcon col="current_price" sortBy={sortBy} sortOrder={sortOrder} />
               </th>
@@ -129,6 +132,11 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
                 {/* Avg Cost */}
                 <td className="px-4 py-4 text-right">
                   <span className="text-sm text-zinc-300">{formatCurrency(holding.avg_cost)}</span>
+                </td>
+
+                {/* Total Invested */}
+                <td className="px-4 py-4 text-right">
+                  <span className="text-sm font-medium text-zinc-200">{formatCurrency(holding.total_invested)}</span>
                 </td>
 
                 {/* Current Price */}
