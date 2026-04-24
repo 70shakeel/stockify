@@ -37,7 +37,6 @@ async function computeCostBasisForSell(
     .order('created_at', { ascending: true })
 
   if (excludeId) {
-    // @ts-expect-error – supabase-js supports .neq() chaining
     query = query.neq('id', excludeId)
   }
 

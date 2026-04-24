@@ -310,7 +310,7 @@ export async function getPortfolioPositions(): Promise<{
 
   const { data: transactions, error: txError } = await supabase
     .from('transactions')
-    .select('symbol, type, quantity, price_per_share, fees, cost_basis')
+    .select('symbol, type, quantity, price_per_share, fees, cost_basis, executed_at, created_at')
     .eq('user_id', user.id)
     .order('executed_at', { ascending: true })
     .order('created_at', { ascending: true })
@@ -346,13 +346,13 @@ export async function getPortfolioPositions(): Promise<{
       const refreshedStockMap = new Map(
         refreshedStocks.map(stock => [stock.symbol, stock])
       )
-      const positions = buildPortfolioPositions(txRows, refreshedStockMap)
+      const positions = buildPortfolioPositions(txRows as Parameters<typeof buildPortfolioPositions>[0], refreshedStockMap)
       return { data: positions, error: null }
     }
   }
 
   const stockMap = new Map(stocks.map(stock => [stock.symbol, stock]))
-  const positions = buildPortfolioPositions(txRows, stockMap)
+  const positions = buildPortfolioPositions(txRows as Parameters<typeof buildPortfolioPositions>[0], stockMap)
 
   return { data: positions, error: null }
 }
