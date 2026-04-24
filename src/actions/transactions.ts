@@ -4,24 +4,27 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { TransactionInput } from '@/lib/psx/types'
 import { refreshStockPrice } from '@/actions/stocks'
+import { type Lot, addBuyLot, consumeSellLots } from '@/lib/lots'
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
 /**
  * Replay transactions for a symbol in chronological order to derive the
- * weighted-average cost-per-share that would apply to a SELL executed at
- * `sellExecutedAt`.  Pass `excludeId` when updating an existing transaction
- * so its old row is not double-counted.
+ * FIFO cost-per-share for a SELL of `sellQty` shares executed at `sellExecutedAt`.
  *
- * Matches the lot-reset logic in portfolio_holdings: when open_qty hits 0 the
- * running cost resets so historical lots don't skew a new position's avg cost.
- * Fees are NOT included in the avg cost (consistent with portfolio_holdings view).
+ * FIFO: sells consume the oldest purchased lots first.  When the position is
+ * fully closed (open qty hits 0) a new lot starts so historical buys don't
+ * skew a fresh position's avg cost.  Fees are excluded from cost basis.
+ *
+ * Pass `excludeId` when updating an existing transaction so its old row is
+ * not double-counted.
  */
 async function computeCostBasisForSell(
   supabase: SupabaseServerClient,
   userId: string,
   symbol: string,
   sellExecutedAt: string,
+  sellQty: number,
   excludeId?: string,
 ): Promise<number> {
   let query = supabase
@@ -40,28 +43,20 @@ async function computeCostBasisForSell(
 
   const { data: txs } = await query
 
-  let openQty = 0
-  let totalCost = 0 // sum of (qty × price) for currently-held shares
-
+  // Replay prior transactions to build the FIFO lot queue
+  const lots: Lot[] = []
   for (const tx of (txs ?? [])) {
     const qty = Number(tx.quantity)
     const price = Number(tx.price_per_share)
-
     if (tx.type === 'BUY') {
-      if (openQty <= 0) { openQty = 0; totalCost = 0 } // lot reset
-      openQty += qty
-      totalCost += qty * price
+      addBuyLot(lots, qty, price)
     } else if (tx.type === 'SELL') {
-      if (openQty > 0) {
-        const avgCost = totalCost / openQty
-        const sellQty = Math.min(qty, openQty)
-        totalCost -= avgCost * sellQty
-        openQty -= sellQty
-      }
+      consumeSellLots(lots, qty)
     }
   }
 
-  return openQty > 0 ? totalCost / openQty : 0
+  // Cost basis for the target sell = FIFO cost of the lots being consumed
+  return consumeSellLots(lots, sellQty)
 }
 
 export async function addTransaction(input: TransactionInput) {
@@ -92,14 +87,18 @@ export async function addTransaction(input: TransactionInput) {
     return { error: 'Transaction type must be BUY or SELL' }
   }
 
-  // For SELL: verify user has enough shares and capture the current avg cost
+  const normalizedSymbol = input.symbol.toUpperCase().trim()
+
+  // For SELL: verify user has enough shares, then compute cost basis via the
+  // lot-aware replay (same as updateTransaction) so backdated sells get the
+  // correct avg cost for their position in history rather than the current snapshot.
   let sellCostBasis: number | null = null
   if (input.type === 'SELL') {
     const { data: holdings } = await supabase
       .from('portfolio_holdings')
-      .select('net_quantity, avg_cost')
+      .select('net_quantity')
       .eq('user_id', user.id)
-      .eq('symbol', input.symbol.toUpperCase())
+      .eq('symbol', normalizedSymbol)
       .single()
 
     const currentQty = Number(holdings?.net_quantity) || 0
@@ -109,11 +108,14 @@ export async function addTransaction(input: TransactionInput) {
       }
     }
 
-    // avg_cost from the view is the weighted avg price of the current lot (fees excluded)
-    sellCostBasis = holdings?.avg_cost != null ? Number(holdings.avg_cost) : 0
+    sellCostBasis = await computeCostBasisForSell(
+      supabase,
+      user.id,
+      normalizedSymbol,
+      input.executed_at || new Date().toISOString(),
+      input.quantity,
+    )
   }
-
-  const normalizedSymbol = input.symbol.toUpperCase().trim()
 
   // Ensure stock exists in DB cache to satisfy Foreign Key constraints
   // If it doesn't exist, insert a basic placeholder. Real data will be backfilled by the scraper later.
@@ -212,6 +214,7 @@ export async function updateTransaction(transactionId: string, input: Transactio
       user.id,
       normalizedSymbol,
       input.executed_at || new Date().toISOString(),
+      input.quantity,
       transactionId, // exclude self so the old row is not counted
     )
   }
@@ -285,30 +288,18 @@ export async function getTransactions(symbol?: string) {
       return dateDiff !== 0 ? dateDiff : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     })
 
-    let openQty = 0
-    let totalCost = 0
+    // FIFO lot queue: oldest shares are consumed first by sells.
+    // Always recalculate cost_basis so stale stored values are corrected in-memory.
+    const lots: Lot[] = []
 
     for (const tx of chrono) {
       const qty = Number(tx.quantity)
       const price = Number(tx.price_per_share)
 
       if (tx.type === 'BUY') {
-        if (openQty <= 0) { openQty = 0; totalCost = 0 } // lot reset
-        openQty += qty
-        totalCost += qty * price
+        addBuyLot(lots, qty, price)
       } else if (tx.type === 'SELL') {
-        const avgCost = openQty > 0 ? totalCost / openQty : 0
-
-        // Back-fill missing cost_basis in-memory (no DB write needed for display)
-        if (tx.cost_basis == null) {
-          tx.cost_basis = avgCost
-        }
-
-        const sellQty = Math.min(qty, openQty)
-        if (openQty > 0) {
-          totalCost -= avgCost * sellQty
-          openQty -= sellQty
-        }
+        tx.cost_basis = consumeSellLots(lots, qty)
       }
     }
   }

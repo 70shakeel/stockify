@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { PortfolioHolding, PortfolioPosition, PortfolioSummaryData } from '@/lib/psx/types'
+import { type Lot, addBuyLot, consumeSellLots, lotsAvgCost, lotsTotalCost } from '@/lib/lots'
 
 import { refreshStockPrice } from '@/actions/stocks'
 
@@ -12,10 +13,15 @@ function toFiniteNumber(value: number) {
 }
 
 /**
- * Replay transactions for each symbol in chronological order and fill in
- * `cost_basis` for any SELL rows where it is null (legacy records).
- * Matches the lot-reset logic used everywhere else: when open_qty hits 0 the
- * running cost resets so old lots don't skew a new position's average cost.
+ * Replay transactions for each symbol in chronological order and derive
+ * FIFO `cost_basis` for every SELL row.
+ *
+ * FIFO: sells consume the oldest purchased lots first.  When the position is
+ * fully closed (open qty hits 0) a new lot starts so historical buys don't
+ * skew a fresh position's avg cost.  Fees are excluded from cost basis.
+ *
+ * Always overwrites any stored value so stale DB entries (e.g. from backdated
+ * BUYs inserted after the SELL) are corrected in-memory.
  * Mutates the array in-place and returns it.
  */
 function enrichWithCostBasis<T extends {
@@ -44,27 +50,16 @@ function enrichWithCostBasis<T extends {
       return ca - cb
     })
 
-    let openQty = 0
-    let totalCost = 0
+    const lots: Lot[] = []
 
     for (const tx of chrono) {
       const qty = Number(tx.quantity)
       const price = Number(tx.price_per_share)
 
       if (tx.type === 'BUY') {
-        if (openQty <= 0) { openQty = 0; totalCost = 0 }
-        openQty += qty
-        totalCost += qty * price
+        addBuyLot(lots, qty, price)
       } else if (tx.type === 'SELL') {
-        const avgCost = openQty > 0 ? totalCost / openQty : 0
-        if (tx.cost_basis == null) {
-          tx.cost_basis = avgCost
-        }
-        const sellQty = Math.min(qty, openQty)
-        if (openQty > 0) {
-          totalCost -= avgCost * sellQty
-          openQty -= sellQty
-        }
+        tx.cost_basis = consumeSellLots(lots, qty)
       }
     }
   }
@@ -329,16 +324,6 @@ export async function getPortfolioPositions(): Promise<{
     return { data: [], error: null }
   }
 
-  const { data: holdings, error: holdingsError } = await supabase
-    .from('portfolio_holdings')
-    .select('symbol, avg_cost')
-    .eq('user_id', user.id)
-    .gt('net_quantity', 0)
-
-  if (holdingsError) {
-    return { data: [], error: holdingsError.message }
-  }
-
   const symbols = [...new Set(txRows.map(tx => tx.symbol))]
   const shouldRefreshPrices = await ensureFreshPrices(supabase, symbols)
 
@@ -361,20 +346,13 @@ export async function getPortfolioPositions(): Promise<{
       const refreshedStockMap = new Map(
         refreshedStocks.map(stock => [stock.symbol, stock])
       )
-      const holdingsMap = new Map(
-        (holdings || []).map(holding => [holding.symbol, Number(holding.avg_cost || 0)])
-      )
-
-      const positions = buildPortfolioPositions(txRows, refreshedStockMap, holdingsMap)
+      const positions = buildPortfolioPositions(txRows, refreshedStockMap)
       return { data: positions, error: null }
     }
   }
 
   const stockMap = new Map(stocks.map(stock => [stock.symbol, stock]))
-  const holdingsMap = new Map(
-    (holdings || []).map(holding => [holding.symbol, Number(holding.avg_cost || 0)])
-  )
-  const positions = buildPortfolioPositions(txRows, stockMap, holdingsMap)
+  const positions = buildPortfolioPositions(txRows, stockMap)
 
   return { data: positions, error: null }
 }
@@ -389,14 +367,11 @@ function buildPortfolioPositions(
     cost_basis?: number | null
   }>,
   stockMap: Map<string, { symbol: string; name: string; last_price: number | string | null }>,
-  holdingsMap: Map<string, number>
 ): PortfolioPosition[] {
-  type PositionWithLot = PortfolioPosition & {
-    current_lot_buy_quantity: number
-    current_lot_buy_cost: number
-  }
+  // Extend PortfolioPosition with a per-symbol FIFO lot queue (internal only)
+  type PositionWithLots = PortfolioPosition & { lots: Lot[] }
 
-  const positions = new Map<string, PositionWithLot>()
+  const positions = new Map<string, PositionWithLots>()
 
   for (const tx of transactions) {
     const stock = stockMap.get(tx.symbol)
@@ -426,8 +401,7 @@ function buildPortfolioPositions(
         total_gain_loss_percent: 0,
         total_fees: 0,
         status: 'CLOSED',
-        current_lot_buy_quantity: 0,
-        current_lot_buy_cost: 0,
+        lots: [],
       })
     }
 
@@ -437,32 +411,24 @@ function buildPortfolioPositions(
     position.total_fees += fees
 
     if (tx.type === 'BUY') {
-      // A BUY made when the position is fully closed starts a new "lot".
-      // Reset the current-lot avg-cost tracking so historical buys that have
-      // been fully sold don't skew the new position's average cost.
-      if (position.open_quantity <= 0) {
-        position.current_lot_buy_quantity = 0
-        position.current_lot_buy_cost = 0
-      }
+      // addBuyLot handles lot-reset when position was fully closed
+      addBuyLot(position.lots, quantity, pricePerShare)
+
       const buyCost = quantity * pricePerShare + fees
       position.bought_quantity += quantity
       position.open_quantity += quantity
       position.total_buy_cost += buyCost
       position.invested_amount += buyCost
-      position.current_lot_buy_quantity += quantity
-      position.current_lot_buy_cost += quantity * pricePerShare
     } else {
       const sellProceeds = quantity * pricePerShare - fees
       position.sold_quantity += quantity
       position.total_sale_value += quantity * pricePerShare
       position.realized_proceeds += sellProceeds
 
-      // cost_basis is always populated by enrichWithCostBasis before this
-      // function is called, so we can rely on it directly.
-      const avgCostPerShare = Number(tx.cost_basis ?? 0)
-
+      // FIFO: consume oldest lots and get cost basis (fees excluded, price only)
       const sellQuantity = Math.min(quantity, position.open_quantity)
-      const soldCostBasis = avgCostPerShare * sellQuantity
+      const fifoAvgCost = consumeSellLots(position.lots, sellQuantity)
+      const soldCostBasis = fifoAvgCost * sellQuantity
 
       position.realized_gain_loss += sellProceeds - soldCostBasis
       position.open_quantity -= sellQuantity
@@ -471,39 +437,30 @@ function buildPortfolioPositions(
   }
 
   return [...positions.values()]
-    .map(position => {
-      position.avg_buy_cost = position.current_lot_buy_quantity > 0
-        ? position.current_lot_buy_cost / position.current_lot_buy_quantity
-        : 0
+    .map(({ lots, ...position }) => {
+      // FIFO avg cost = weighted avg of remaining (unsold) lots (fees excluded)
+      const fifoAvgCost = lotsAvgCost(lots)
+      const fifoOpenCost = lotsTotalCost(lots)
+
+      position.avg_buy_cost = fifoAvgCost
       position.avg_sale_price = position.sold_quantity > 0
         ? position.total_sale_value / position.sold_quantity
         : 0
-      const holdingAvgCost = holdingsMap.get(position.symbol)
-      position.avg_open_cost = position.open_quantity > 0
-        ? (holdingAvgCost ?? (position.invested_amount / position.open_quantity))
-        : 0
+      position.avg_open_cost = position.open_quantity > 0 ? fifoAvgCost : 0
       position.unrealized_gain_loss = position.open_quantity > 0
-        ? (position.current_price * position.open_quantity) - (position.avg_open_cost * position.open_quantity)
+        ? (position.current_price * position.open_quantity) - fifoOpenCost
         : 0
       position.total_gain_loss = position.realized_gain_loss + position.unrealized_gain_loss
       const totalCostBasis = position.bought_quantity > 0
-        ? position.invested_amount + (position.realized_proceeds - position.realized_gain_loss)
+        ? fifoOpenCost + (position.realized_proceeds - position.realized_gain_loss)
         : 0
       position.total_gain_loss_percent = totalCostBasis > 0
         ? (position.total_gain_loss / totalCostBasis) * 100
         : 0
       position.status = position.open_quantity > 0 ? 'OPEN' : 'CLOSED'
 
-      const {
-        current_lot_buy_quantity: _clq,
-        current_lot_buy_cost: _clc,
-        ...publicPosition
-      } = position
-      void _clq
-      void _clc
-
       return {
-        ...publicPosition,
+        ...position,
         avg_buy_cost: Number(toFiniteNumber(position.avg_buy_cost).toFixed(2)),
         avg_sale_price: Number(toFiniteNumber(position.avg_sale_price).toFixed(2)),
         avg_open_cost: Number(toFiniteNumber(position.avg_open_cost).toFixed(2)),

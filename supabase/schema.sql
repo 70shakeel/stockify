@@ -75,11 +75,14 @@ CREATE INDEX IF NOT EXISTS idx_investments_invested_at ON investments(invested_a
 -- 5. PORTFOLIO HOLDINGS VIEW
 -- Calculates average cost, current value, and unrealized gain/loss per symbol.
 --
--- Lot-based avg cost: a new "lot" begins whenever a BUY happens after the
--- running net quantity has dropped to 0 (i.e. the position was fully closed).
--- Avg cost, total invested, and unrealized P&L are computed over the CURRENT
--- (latest) lot only, so a fresh buy after a full sell-off is treated as a
--- new position rather than being averaged with long-closed historical buys.
+-- FIFO lot tracking: sells consume the oldest purchased shares first.
+-- avg_cost reflects only the UNSOLD shares' weighted-average purchase price,
+-- so partial sells correctly raise (or lower) the displayed avg cost to match
+-- the remaining lots rather than keeping the overall weighted average.
+--
+-- A new "lot" begins whenever a BUY happens after the running net quantity has
+-- dropped to 0 (position fully closed), so a fresh buy after a full sell-off
+-- is treated as a brand-new position.
 CREATE OR REPLACE VIEW portfolio_holdings AS
 WITH tx_ordered AS (
   SELECT
@@ -109,6 +112,57 @@ current_lot AS (
   SELECT user_id, symbol, MAX(lot_id) AS max_lot_id
   FROM tx_with_lot
   GROUP BY user_id, symbol
+),
+-- Net remaining quantity in the current lot (total buys − total sells)
+lot_net_qty AS (
+  SELECT
+    t.user_id,
+    t.symbol,
+    SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) AS net_qty
+  FROM tx_with_lot t
+  JOIN current_lot cl ON cl.user_id = t.user_id AND cl.symbol = t.symbol
+                      AND t.lot_id = cl.max_lot_id
+  GROUP BY t.user_id, t.symbol
+),
+-- For each BUY in the current lot, cumulative qty counted from newest → oldest.
+-- This lets us determine which shares are still unsold under FIFO.
+lot_buys_ranked AS (
+  SELECT
+    t.user_id,
+    t.symbol,
+    t.quantity,
+    t.price_per_share,
+    SUM(t.quantity) OVER (
+      PARTITION BY t.user_id, t.symbol
+      ORDER BY t.executed_at DESC, t.created_at DESC, t.id DESC
+    ) AS cum_from_end
+  FROM tx_with_lot t
+  JOIN current_lot cl ON cl.user_id = t.user_id AND cl.symbol = t.symbol
+                      AND t.lot_id = cl.max_lot_id
+  WHERE t.type = 'BUY'
+),
+-- FIFO open qty per BUY lot:
+--   open_qty = GREATEST(0, LEAST(buy_qty, net_qty − (cum_from_end − buy_qty)))
+-- Newest lots fill up remaining shares first; oldest lots are consumed by sells.
+fifo_agg AS (
+  SELECT
+    lb.user_id,
+    lb.symbol,
+    SUM(
+      GREATEST(0, LEAST(
+        lb.quantity,
+        lnq.net_qty - (lb.cum_from_end - lb.quantity)
+      ))
+    )::NUMERIC AS total_open_qty,
+    SUM(
+      GREATEST(0, LEAST(
+        lb.quantity,
+        lnq.net_qty - (lb.cum_from_end - lb.quantity)
+      )) * lb.price_per_share
+    )::NUMERIC AS total_open_cost
+  FROM lot_buys_ranked lb
+  JOIN lot_net_qty lnq ON lnq.user_id = lb.user_id AND lnq.symbol = lb.symbol
+  GROUP BY lb.user_id, lb.symbol
 )
 SELECT
   t.user_id,
@@ -119,51 +173,38 @@ SELECT
   s.change AS price_change,
   s.change_percent AS price_change_percent,
   SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) AS net_quantity,
+  -- FIFO avg_cost: weighted avg of open (unsold) lots only
   CASE
-    WHEN SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END) > 0
-    THEN ROUND(
-      SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
-      / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC,
-      2
-    )
+    WHEN fa.total_open_qty > 0
+    THEN ROUND(fa.total_open_cost / fa.total_open_qty, 2)
     ELSE 0
   END AS avg_cost,
+  -- total_invested: net_qty × fifo avg_cost
   CASE
-    WHEN SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END) > 0
+    WHEN fa.total_open_qty > 0
     THEN SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)
-         * (
-             SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
-             / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC
-           )
+         * ROUND(fa.total_open_cost / fa.total_open_qty, 2)
     ELSE 0
   END AS total_invested,
   SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price AS current_value,
+  -- unrealized_gain_loss: current_value − open_cost
   CASE
-    WHEN SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END) > 0
+    WHEN fa.total_open_qty > 0
+     AND SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) > 0
     THEN (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price)
-         - SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)
-           * (
-               SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
-               / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC
-             )
+         - fa.total_open_cost
     ELSE 0
   END AS unrealized_gain_loss,
+  -- unrealized_gain_loss_percent
   CASE
-    WHEN SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END) > 0
+    WHEN fa.total_open_qty > 0
+     AND fa.total_open_cost > 0
      AND SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) > 0
     THEN ROUND(
       (
-        s.last_price
-        - (
-            SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
-            / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC
-          )
-      )
-      / (
-          SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
-          / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC
-        )
-      * 100,
+        (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price)
+        - fa.total_open_cost
+      ) / fa.total_open_cost * 100,
       2
     )
     ELSE 0
@@ -173,7 +214,9 @@ SELECT
 FROM tx_with_lot t
 JOIN current_lot cl ON cl.user_id = t.user_id AND cl.symbol = t.symbol
 JOIN stocks s ON s.symbol = t.symbol
-GROUP BY t.user_id, t.symbol, s.name, s.sector, s.last_price, s.change, s.change_percent, cl.max_lot_id;
+JOIN fifo_agg fa ON fa.user_id = t.user_id AND fa.symbol = t.symbol
+GROUP BY t.user_id, t.symbol, s.name, s.sector, s.last_price, s.change, s.change_percent,
+         cl.max_lot_id, fa.total_open_qty, fa.total_open_cost;
 
 
 -- ============================================
