@@ -41,10 +41,16 @@ CREATE TABLE IF NOT EXISTS transactions (
   quantity INTEGER NOT NULL CHECK (quantity > 0),
   price_per_share NUMERIC(12,2) NOT NULL CHECK (price_per_share >= 0),
   fees NUMERIC(12,2) DEFAULT 0,
+  -- Weighted avg cost per share at the time of the sell (NULL for BUY rows).
+  -- Realized P&L for a sell = qty × (price_per_share − cost_basis) − fees
+  cost_basis NUMERIC(12,4) DEFAULT NULL,
   notes TEXT,
   executed_at TIMESTAMPTZ DEFAULT now(),
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Migration: add cost_basis to existing deployments
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cost_basis NUMERIC(12,4) DEFAULT NULL;
 
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
@@ -67,8 +73,43 @@ CREATE INDEX IF NOT EXISTS idx_investments_user_id ON investments(user_id);
 CREATE INDEX IF NOT EXISTS idx_investments_invested_at ON investments(invested_at DESC);
 
 -- 5. PORTFOLIO HOLDINGS VIEW
--- Calculates average cost, current value, and unrealized gain/loss per symbol
+-- Calculates average cost, current value, and unrealized gain/loss per symbol.
+--
+-- Lot-based avg cost: a new "lot" begins whenever a BUY happens after the
+-- running net quantity has dropped to 0 (i.e. the position was fully closed).
+-- Avg cost, total invested, and unrealized P&L are computed over the CURRENT
+-- (latest) lot only, so a fresh buy after a full sell-off is treated as a
+-- new position rather than being averaged with long-closed historical buys.
 CREATE OR REPLACE VIEW portfolio_holdings AS
+WITH tx_ordered AS (
+  SELECT
+    t.*,
+    COALESCE(
+      SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)
+        OVER (
+          PARTITION BY t.user_id, t.symbol
+          ORDER BY t.executed_at, t.created_at, t.id
+          ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+        ),
+      0
+    ) AS prev_net_qty
+  FROM transactions t
+),
+tx_with_lot AS (
+  SELECT
+    *,
+    SUM(CASE WHEN type = 'BUY' AND prev_net_qty <= 0 THEN 1 ELSE 0 END)
+      OVER (
+        PARTITION BY user_id, symbol
+        ORDER BY executed_at, created_at, id
+      ) AS lot_id
+  FROM tx_ordered
+),
+current_lot AS (
+  SELECT user_id, symbol, MAX(lot_id) AS max_lot_id
+  FROM tx_with_lot
+  GROUP BY user_id, symbol
+)
 SELECT
   t.user_id,
   t.symbol,
@@ -77,52 +118,62 @@ SELECT
   s.last_price AS current_price,
   s.change AS price_change,
   s.change_percent AS price_change_percent,
-  -- Net quantity (BUY adds, SELL subtracts)
   SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) AS net_quantity,
-  -- Average buy cost (weighted average of all BUY transactions)
   CASE
-    WHEN SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE 0 END) > 0
+    WHEN SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END) > 0
     THEN ROUND(
-      SUM(CASE WHEN t.type = 'BUY' THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
-      / SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE 0 END)::NUMERIC,
+      SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
+      / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC,
       2
     )
     ELSE 0
   END AS avg_cost,
-  -- Total invested (sum of all BUY costs minus SELL proceeds)
-  SUM(CASE WHEN t.type = 'BUY' THEN t.quantity * t.price_per_share ELSE 0 END) AS total_invested,
-  -- Current market value
-  SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price AS current_value,
-  -- Unrealized gain/loss
-  (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price)
-    - SUM(CASE
-        WHEN t.type = 'BUY' THEN t.quantity * t.price_per_share
-        ELSE -t.quantity * t.price_per_share
-      END) AS unrealized_gain_loss,
-  -- Unrealized gain/loss percentage
   CASE
-    WHEN SUM(CASE WHEN t.type = 'BUY' THEN t.quantity * t.price_per_share ELSE 0 END) > 0
+    WHEN SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END) > 0
+    THEN SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)
+         * (
+             SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
+             / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC
+           )
+    ELSE 0
+  END AS total_invested,
+  SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price AS current_value,
+  CASE
+    WHEN SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END) > 0
+    THEN (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price)
+         - SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)
+           * (
+               SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
+               / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC
+             )
+    ELSE 0
+  END AS unrealized_gain_loss,
+  CASE
+    WHEN SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END) > 0
+     AND SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) > 0
     THEN ROUND(
       (
-        (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price)
-        - SUM(CASE
-            WHEN t.type = 'BUY' THEN t.quantity * t.price_per_share
-            ELSE -t.quantity * t.price_per_share
-          END)
-      )::NUMERIC
-      / SUM(CASE WHEN t.type = 'BUY' THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
+        s.last_price
+        - (
+            SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
+            / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC
+          )
+      )
+      / (
+          SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC
+          / SUM(CASE WHEN t.type = 'BUY' AND t.lot_id = cl.max_lot_id THEN t.quantity ELSE 0 END)::NUMERIC
+        )
       * 100,
       2
     )
     ELSE 0
   END AS unrealized_gain_loss_percent,
-  -- Total fees paid
   SUM(t.fees) AS total_fees,
-  -- Number of transactions
   COUNT(t.id) AS transaction_count
-FROM transactions t
+FROM tx_with_lot t
+JOIN current_lot cl ON cl.user_id = t.user_id AND cl.symbol = t.symbol
 JOIN stocks s ON s.symbol = t.symbol
-GROUP BY t.user_id, t.symbol, s.name, s.sector, s.last_price, s.change, s.change_percent;
+GROUP BY t.user_id, t.symbol, s.name, s.sector, s.last_price, s.change, s.change_percent, cl.max_lot_id;
 
 
 -- ============================================

@@ -108,108 +108,136 @@ export function TransactionList({ transactions }: TransactionListProps) {
         </div>
       </div>
 
+      {/* Column Headers */}
+      <div className="hidden sm:flex items-center gap-4 px-5 text-xs font-medium text-zinc-600 uppercase tracking-wider">
+        <div className="w-10 shrink-0" />
+        <div className="flex-1">Transaction</div>
+        <div className="w-32 text-right shrink-0">Amount</div>
+        <div className="w-28 text-right shrink-0">P&amp;L</div>
+        <div className="w-16 shrink-0" />
+      </div>
+
       <div className="space-y-2">
-        {sortedTransactions.map((txn, i) => (
-        <Card
-          key={txn.id}
-          padding="none"
-          className={cn(
-            'animate-fade-in opacity-0',
-            `stagger-${Math.min(i + 1, 8)}`,
-            deletingId === txn.id && 'opacity-50 pointer-events-none'
-          )}
-        >
-          <div className="flex items-center gap-4 px-5 py-4">
-            {/* Type Icon */}
-            <div
-              className={cn(
-                'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
-                txn.type === 'BUY'
-                  ? 'bg-emerald-500/10 text-emerald-400'
-                  : 'bg-red-500/10 text-red-400'
-              )}
-            >
-              {txn.type === 'BUY' ? (
-                <ArrowUpCircle className="w-5 h-5" />
-              ) : (
-                <ArrowDownCircle className="w-5 h-5" />
-              )}
-            </div>
+        {sortedTransactions.map((txn, i) => {
+          const pnl = txn.type === 'SELL' && txn.cost_basis != null
+            ? txn.quantity * (txn.price_per_share - txn.cost_basis) - (txn.fees ?? 0)
+            : null
 
-            {/* Details */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-zinc-100">
-                  {txn.symbol}
-                </span>
-                <span className="text-xs text-zinc-400">•</span>
-                <span className="text-xs text-zinc-400 border border-zinc-700/50 rounded px-1.5 py-0.5">
-                  {new Date(txn.executed_at).toLocaleDateString('en-PK', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric'
-                  })}
-                </span>
-                <Badge
-                  variant={txn.type === 'BUY' ? 'success' : 'danger'}
-                >
-                  {txn.type}
-                </Badge>
+          return (
+          <Card
+            key={txn.id}
+            padding="none"
+            className={cn(
+              'animate-fade-in opacity-0',
+              `stagger-${Math.min(i + 1, 8)}`,
+              deletingId === txn.id && 'opacity-50 pointer-events-none'
+            )}
+          >
+            <div className="flex items-center gap-4 px-5 py-4">
+              {/* Type Icon */}
+              <div
+                className={cn(
+                  'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
+                  txn.type === 'BUY'
+                    ? 'bg-emerald-500/10 text-emerald-400'
+                    : 'bg-red-500/10 text-red-400'
+                )}
+              >
+                {txn.type === 'BUY' ? (
+                  <ArrowUpCircle className="w-5 h-5" />
+                ) : (
+                  <ArrowDownCircle className="w-5 h-5" />
+                )}
               </div>
-              <p className="text-xs text-zinc-500 mt-1">
-                {txn.quantity} shares @ {formatCurrency(txn.price_per_share)}
-                {txn.fees > 0 && ` • Fee: ${formatCurrency(txn.fees)}`}
-              </p>
-              {txn.notes && (
-                <p className="text-xs text-zinc-600 mt-1 truncate">
-                  {txn.notes}
+
+              {/* Details */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-zinc-100">
+                    {txn.symbol}
+                  </span>
+                  <span className="text-xs text-zinc-400">•</span>
+                  <span className="text-xs text-zinc-400 border border-zinc-700/50 rounded px-1.5 py-0.5">
+                    {new Date(txn.executed_at).toLocaleDateString('en-PK', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    })}
+                  </span>
+                  <Badge variant={txn.type === 'BUY' ? 'success' : 'danger'}>
+                    {txn.type}
+                  </Badge>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">
+                  {txn.quantity} shares @ {formatCurrency(txn.price_per_share)}
+                  {txn.fees > 0 && ` • Fee: ${formatCurrency(txn.fees)}`}
                 </p>
-              )}
-            </div>
+                {txn.type === 'SELL' && txn.cost_basis != null && (
+                  <p className="text-xs text-zinc-600 mt-0.5">
+                    Avg cost: {formatCurrency(txn.cost_basis)}/share
+                  </p>
+                )}
+                {txn.notes && (
+                  <p className="text-xs text-zinc-600 mt-1 truncate">{txn.notes}</p>
+                )}
+              </div>
 
-            {/* Amount + Date */}
-            <div className="text-right shrink-0">
-              <p className={cn(
-                'text-sm font-semibold',
-                txn.type === 'BUY' ? 'text-zinc-100' : 'text-red-400'
-              )}>
-                {txn.type === 'BUY' ? '-' : '+'}{formatCurrency(txn.quantity * txn.price_per_share)}
-              </p>
-              <p className="text-xs text-zinc-500 mt-0.5" title={new Date(txn.executed_at).toLocaleTimeString()}>
-                {new Date(txn.executed_at).toLocaleDateString('en-PK', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric'
-                })}
-              </p>
-            </div>
+              {/* Amount */}
+              <div className="w-32 text-right shrink-0">
+                <p className="text-sm font-semibold text-zinc-100">
+                  {txn.type === 'BUY' ? '-' : '+'}{formatCurrency(txn.quantity * txn.price_per_share)}
+                </p>
+              </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-1 shrink-0 ml-2 border-l border-zinc-800 pl-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => openEditTransactionModal(txn)}
-                disabled={isPending}
-                className="text-zinc-500 hover:text-emerald-400 p-2 h-auto"
-                title="Edit Transaction"
-              >
-                <Edit2 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleDelete(txn.id)}
-                disabled={isPending}
-                className="text-zinc-500 hover:text-red-400 p-2 h-auto"
-                title="Delete Transaction"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
+              {/* P&L */}
+              <div className="w-28 text-right shrink-0">
+                {pnl != null ? (
+                  <div>
+                    <p className={cn(
+                      'text-sm font-semibold',
+                      pnl >= 0 ? 'text-emerald-400' : 'text-red-400'
+                    )}>
+                      {pnl >= 0 ? '+' : ''}{formatCurrency(pnl)}
+                    </p>
+                    <p className={cn(
+                      'text-xs mt-0.5',
+                      pnl >= 0 ? 'text-emerald-600' : 'text-red-600'
+                    )}>
+                      {pnl >= 0 ? '▲' : '▼'} {Math.abs(((txn.price_per_share - txn.cost_basis!) / txn.cost_basis!) * 100).toFixed(2)}%
+                    </p>
+                  </div>
+                ) : (
+                  <span className="text-zinc-700 text-sm">—</span>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-1 shrink-0 ml-2 border-l border-zinc-800 pl-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => openEditTransactionModal(txn)}
+                  disabled={isPending}
+                  className="text-zinc-500 hover:text-emerald-400 p-2 h-auto"
+                  title="Edit Transaction"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleDelete(txn.id)}
+                  disabled={isPending}
+                  className="text-zinc-500 hover:text-red-400 p-2 h-auto"
+                  title="Delete Transaction"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
-          </div>
-        </Card>
-      ))}
+          </Card>
+          )
+        })}
       </div>
     </div>
   )

@@ -71,6 +71,8 @@ export interface Transaction {
   quantity: number
   price_per_share: number
   fees: number
+  /** Weighted avg cost per share at the time of the sell; null for BUY rows. */
+  cost_basis: number | null
   notes: string | null
   executed_at: string
   created_at: string
