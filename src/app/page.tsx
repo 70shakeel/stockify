@@ -53,27 +53,24 @@ async function DashboardContent() {
         <PortfolioSummary summary={summaryResult.data} />
       )}
 
-      {/* Holdings + News Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-200">Your Holdings</h2>
-            <Link
-              href="/portfolio"
-              className="text-sm text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
-            >
-              View all <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-          <HoldingsTable holdings={holdingsResult.data.slice(0, 5)} />
+      {/* Holdings */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-zinc-200">Your Holdings</h2>
+          <Link
+            href="/portfolio"
+            className="text-sm text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+          >
+            View all <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
-
-        <div>
-          <Suspense fallback={<Card className="py-12"><Spinner className="mx-auto" /></Card>}>
-            <NewsFeed />
-          </Suspense>
-        </div>
+        <HoldingsTable holdings={holdingsResult.data.slice(0, 5)} />
       </div>
+
+      {/* News */}
+      <Suspense fallback={<Card className="py-12"><Spinner className="mx-auto" /></Card>}>
+        <NewsFeed />
+      </Suspense>
     </div>
   )
 }
