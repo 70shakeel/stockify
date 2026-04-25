@@ -207,9 +207,13 @@ export async function getPortfolioSummary(): Promise<{
   // Ensure every SELL row has a cost_basis (back-fills legacy null rows).
   const enrichedTxs = enrichWithCostBasis(transactions || [])
 
-  // Realized P&L = sum of each SELL transaction's P&L.
-  // P&L per sell = qty × sell_price − fees − qty × cost_basis
+  const CAPITAL_GAINS_TAX_RATE = 0.15
+
+  // Realized P&L = sum of each SELL transaction's P&L, net of 15% capital gains tax on profits.
+  // Gross P&L per sell = qty × sell_price − fees − qty × cost_basis
+  // Tax = gross P&L × 15% (only when gross P&L > 0)
   let realizedGainLoss = 0
+  let totalTaxPaid = 0
   let totalFees = 0
   let totalBuyValue = 0
   let totalSellValue = 0
@@ -226,7 +230,10 @@ export async function getPortfolioSummary(): Promise<{
       const proceeds = qty * price - fees
       totalSellValue += proceeds
       const costBasis = Number(tx.cost_basis ?? 0)
-      realizedGainLoss += proceeds - qty * costBasis
+      const grossPnl = proceeds - qty * costBasis
+      const tax = grossPnl > 0 ? grossPnl * CAPITAL_GAINS_TAX_RATE : 0
+      totalTaxPaid += tax
+      realizedGainLoss += grossPnl - tax
     }
   }
 
@@ -247,6 +254,7 @@ export async function getPortfolioSummary(): Promise<{
         investmentAvailable,
         totalAddedFunds,
         totalWithdrawnFunds,
+        totalTaxPaid,
       },
       error: null,
     }
@@ -289,6 +297,7 @@ export async function getPortfolioSummary(): Promise<{
       investmentAvailable,
       totalAddedFunds,
       totalWithdrawnFunds,
+      totalTaxPaid,
     },
     error: null,
   }
@@ -357,6 +366,8 @@ export async function getPortfolioPositions(): Promise<{
   return { data: positions, error: null }
 }
 
+const CAPITAL_GAINS_TAX_RATE = 0.15
+
 function buildPortfolioPositions(
   transactions: Array<{
     symbol: string
@@ -396,6 +407,7 @@ function buildPortfolioPositions(
         invested_amount: 0,
         realized_proceeds: 0,
         realized_gain_loss: 0,
+        tax_paid: 0,
         unrealized_gain_loss: 0,
         total_gain_loss: 0,
         total_gain_loss_percent: 0,
@@ -430,7 +442,10 @@ function buildPortfolioPositions(
       const fifoAvgCost = consumeSellLots(position.lots, sellQuantity)
       const soldCostBasis = fifoAvgCost * sellQuantity
 
-      position.realized_gain_loss += sellProceeds - soldCostBasis
+      const grossPnl = sellProceeds - soldCostBasis
+      const tax = grossPnl > 0 ? grossPnl * CAPITAL_GAINS_TAX_RATE : 0
+      position.tax_paid += tax
+      position.realized_gain_loss += grossPnl - tax
       position.open_quantity -= sellQuantity
       position.invested_amount -= soldCostBasis
     }
@@ -469,6 +484,7 @@ function buildPortfolioPositions(
         invested_amount: Number(toFiniteNumber(position.invested_amount).toFixed(2)),
         realized_proceeds: Number(toFiniteNumber(position.realized_proceeds).toFixed(2)),
         realized_gain_loss: Number(toFiniteNumber(position.realized_gain_loss).toFixed(2)),
+        tax_paid: Number(toFiniteNumber(position.tax_paid).toFixed(2)),
         unrealized_gain_loss: Number(toFiniteNumber(position.unrealized_gain_loss).toFixed(2)),
         total_gain_loss: Number(toFiniteNumber(position.total_gain_loss).toFixed(2)),
         total_gain_loss_percent: Number(toFiniteNumber(position.total_gain_loss_percent).toFixed(2)),

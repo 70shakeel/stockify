@@ -113,15 +113,18 @@ export function TransactionList({ transactions }: TransactionListProps) {
         <div className="w-10 shrink-0" />
         <div className="flex-1">Transaction</div>
         <div className="w-32 text-right shrink-0">Amount</div>
-        <div className="w-28 text-right shrink-0">P&amp;L</div>
+        <div className="w-24 text-right shrink-0">Tax (15%)</div>
+        <div className="w-28 text-right shrink-0">P&amp;L (After Tax)</div>
         <div className="w-16 shrink-0" />
       </div>
 
       <div className="space-y-2">
         {sortedTransactions.map((txn, i) => {
-          const pnl = txn.type === 'SELL' && txn.cost_basis != null
+          const grossPnl = txn.type === 'SELL' && txn.cost_basis != null
             ? txn.quantity * (txn.price_per_share - txn.cost_basis) - (txn.fees ?? 0)
             : null
+          const tax = grossPnl != null && grossPnl > 0 ? grossPnl * 0.15 : 0
+          const pnl = grossPnl != null ? grossPnl - tax : null
 
           return (
           <Card
@@ -189,7 +192,18 @@ export function TransactionList({ transactions }: TransactionListProps) {
                 </p>
               </div>
 
-              {/* P&L */}
+              {/* Tax */}
+              <div className="w-24 text-right shrink-0">
+                {tax > 0 ? (
+                  <p className="text-sm font-semibold text-amber-400">
+                    -{formatCurrency(tax)}
+                  </p>
+                ) : (
+                  <span className="text-zinc-700 text-sm">—</span>
+                )}
+              </div>
+
+              {/* P&L (after tax) */}
               <div className="w-28 text-right shrink-0">
                 {pnl != null ? (
                   <div>

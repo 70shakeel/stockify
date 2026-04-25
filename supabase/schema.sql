@@ -219,6 +219,21 @@ GROUP BY t.user_id, t.symbol, s.name, s.sector, s.last_price, s.change, s.change
          cl.max_lot_id, fa.total_open_qty, fa.total_open_cost;
 
 
+-- 5b. PARTNERS TABLE
+-- Records profit-sharing partners and their percentage split
+CREATE TABLE IF NOT EXISTS partners (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  percentage NUMERIC(6,3) NOT NULL CHECK (percentage > 0 AND percentage <= 100),
+  color TEXT NOT NULL DEFAULT '#10b981',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_partners_user_id ON partners(user_id);
+
 -- ============================================
 -- 6. ROW LEVEL SECURITY (RLS)
 -- ============================================
@@ -276,6 +291,25 @@ CREATE POLICY "Users can delete own investments"
   ON investments FOR DELETE
   USING (auth.uid() = user_id);
 
+-- Partners: users can only CRUD their own partners
+ALTER TABLE partners ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own partners"
+  ON partners FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own partners"
+  ON partners FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own partners"
+  ON partners FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own partners"
+  ON partners FOR DELETE
+  USING (auth.uid() = user_id);
+
 -- Stocks: public read, authenticated users can write
 ALTER TABLE stocks ENABLE ROW LEVEL SECURITY;
 
@@ -321,6 +355,10 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE TRIGGER profiles_updated_at
   BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE OR REPLACE TRIGGER partners_updated_at
+  BEFORE UPDATE ON partners
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 

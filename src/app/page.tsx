@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { Badge } from '@/components/ui/Badge'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
+import { formatCurrency } from '@/lib/utils'
 import {
   TrendingUp,
   BarChart3,
@@ -56,7 +57,17 @@ async function DashboardContent() {
       {/* Holdings */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-200">Your Holdings</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-200">Your Holdings</h2>
+            {holdingsResult.data.length > 0 && (
+              <p className="text-sm text-zinc-400 mt-0.5">
+                Invested{' '}
+                <span className="font-semibold text-zinc-200">
+                  {formatCurrency(holdingsResult.data.reduce((sum, h) => sum + Number(h.total_invested), 0))}
+                </span>
+              </p>
+            )}
+          </div>
           <Link
             href="/portfolio"
             className="text-sm text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"

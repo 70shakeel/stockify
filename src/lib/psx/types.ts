@@ -56,6 +56,7 @@ export interface PortfolioPosition {
   invested_amount: number
   realized_proceeds: number
   realized_gain_loss: number
+  tax_paid: number
   unrealized_gain_loss: number
   total_gain_loss: number
   total_gain_loss_percent: number
@@ -114,6 +115,24 @@ export interface NewsItem {
   imageUrl?: string
 }
 
+export interface Partner {
+  id: string
+  user_id: string
+  name: string
+  percentage: number
+  color: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PartnerInput {
+  name: string
+  percentage: number
+  color?: string
+  notes?: string
+}
+
 export interface PortfolioSummaryData {
   totalInvested: number
   currentValue: number
@@ -127,4 +146,5 @@ export interface PortfolioSummaryData {
   investmentAvailable: number
   totalAddedFunds: number
   totalWithdrawnFunds: number
+  totalTaxPaid: number
 }

@@ -5,7 +5,7 @@ import { HoldingsTable } from '@/components/dashboard/HoldingsTable'
 import { InvestmentsTable } from '@/components/dashboard/InvestmentsTable'
 import { PositionsTable } from '@/components/dashboard/PositionsTable'
 import type { InvestmentEntry, PortfolioHolding, PortfolioPosition } from '@/lib/psx/types'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 
 type PortfolioTab = 'positions' | 'holdings' | 'investments'
 
@@ -55,9 +55,17 @@ export function PortfolioTabs({ positions, holdings, investments }: PortfolioTab
 
       {activeTab === 'holdings' && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-zinc-200">
-            Holdings ({holdings.length})
-          </h2>
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-lg font-semibold text-zinc-200">
+              Holdings ({holdings.length})
+            </h2>
+            <span className="text-sm text-zinc-400">
+              Invested{' '}
+              <span className="font-semibold text-zinc-200">
+                {formatCurrency(holdings.reduce((sum, h) => sum + Number(h.total_invested), 0))}
+              </span>
+            </span>
+          </div>
           <HoldingsTable holdings={holdings} />
         </div>
       )}

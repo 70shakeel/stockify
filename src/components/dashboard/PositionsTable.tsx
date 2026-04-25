@@ -76,8 +76,9 @@ export function PositionsTable({ positions }: PositionsTableProps) {
       }
       acc.unrealized += position.unrealized_gain_loss
       acc.total += position.total_gain_loss
+      acc.taxPaid += position.tax_paid
       return acc
-    }, { realized: 0, unrealized: 0, total: 0 })
+    }, { realized: 0, unrealized: 0, total: 0, taxPaid: 0 })
   }, [positions])
 
   if (positions.length === 0) {
@@ -123,6 +124,9 @@ export function PositionsTable({ positions }: PositionsTableProps) {
               </th>
               <th className={cn(thClass, 'text-right')} onClick={() => handleSort('realized_gain_loss')}>
                 Realized P&L <SortIcon col="realized_gain_loss" sortBy={sortBy} sortOrder={sortOrder} />
+              </th>
+              <th className="px-4 py-3.5 text-right text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                Tax (15%)
               </th>
               <th className={cn(thClass, 'text-right')} onClick={() => handleSort('unrealized_gain_loss')}>
                 Unrealized P&L <SortIcon col="unrealized_gain_loss" sortBy={sortBy} sortOrder={sortOrder} />
@@ -173,6 +177,15 @@ export function PositionsTable({ positions }: PositionsTableProps) {
                   )}
                 </td>
                 <td className="px-4 py-4 text-right">
+                  {position.tax_paid > 0 ? (
+                    <span className="text-sm font-semibold text-amber-400">
+                      -{formatCurrency(position.tax_paid)}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-zinc-600">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-4 text-right">
                   <span className={cn('text-sm font-semibold', getChangeColor(position.unrealized_gain_loss))}>
                     {formatChange(position.unrealized_gain_loss)}
                   </span>
@@ -208,6 +221,15 @@ export function PositionsTable({ positions }: PositionsTableProps) {
                 <span className={cn('text-sm font-semibold', getChangeColor(totals.realized))}>
                   {formatChange(totals.realized)}
                 </span>
+              </td>
+              <td className="px-4 py-4 text-right">
+                {totals.taxPaid > 0 ? (
+                  <span className="text-sm font-semibold text-amber-400">
+                    -{formatCurrency(totals.taxPaid)}
+                  </span>
+                ) : (
+                  <span className="text-sm text-zinc-600">—</span>
+                )}
               </td>
               <td className="px-4 py-4 text-right">
                 <span className={cn('text-sm font-semibold', getChangeColor(totals.unrealized))}>

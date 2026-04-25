@@ -9,6 +9,7 @@ import {
   Receipt,
   Layers,
   Landmark,
+  ShieldAlert,
 } from 'lucide-react'
 
 interface PortfolioSummaryProps {
@@ -46,6 +47,13 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
       bgColor: summary.realizedGainLoss >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10',
     },
     {
+      label: 'Tax Paid (15%)',
+      value: formatCurrencyNoDecimals(summary.totalTaxPaid),
+      icon: ShieldAlert,
+      color: 'text-amber-400',
+      bgColor: 'bg-amber-500/10',
+    },
+    {
       label: 'Potential P&L',
       value: formatCurrencyNoDecimals(summary.potentialGainLoss),
       subValue: formatPercent(summary.totalGainLossPercent),
@@ -74,7 +82,7 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
   ]
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
       {stats.map((stat, i) => {
         const Icon = stat.icon
         return (
