@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/utils'
+import { ClientAddButton } from './transactions/ClientAddButton'
 import {
   TrendingUp,
   BarChart3,
@@ -46,6 +47,7 @@ async function DashboardContent() {
           <Badge variant="success" pulse>
             Market Open
           </Badge>
+          <ClientAddButton />
         </div>
       </div>
 
