@@ -19,16 +19,16 @@ async function TransactionContent({ symbol }: { symbol?: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">
+          <h1 className="text-xl sm:text-2xl font-bold text-zinc-100">
             {symbol ? `Transactions: ${symbol.toUpperCase()}` : 'Transactions'}
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-xs sm:text-sm text-zinc-500 mt-1">
             {symbol ? `Your buy and sell history for ${symbol.toUpperCase()}` : 'Your buy and sell transaction history'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <SeedSymbolsButton />
           <TransactionAddButton />
         </div>

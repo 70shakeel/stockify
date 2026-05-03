@@ -71,14 +71,14 @@ export function TransactionList({ transactions }: TransactionListProps) {
     <div className="space-y-4">
       {/* Sort Controls */}
       <div className="flex items-center justify-between bg-zinc-900/50 p-2 rounded-lg border border-zinc-800">
-        <span className="text-sm text-zinc-400 px-2 flex items-center gap-2">
+        <span className="text-sm text-zinc-400 px-2 items-center gap-2 hidden sm:flex">
           Sort by:
         </span>
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-1 sm:flex-none">
           <button
             onClick={() => handleSort('date')}
             className={cn(
-              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1",
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1 flex-1 sm:flex-none justify-center sm:justify-start",
               sortBy === 'date' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
             )}
           >
@@ -88,7 +88,7 @@ export function TransactionList({ transactions }: TransactionListProps) {
           <button
             onClick={() => handleSort('name')}
             className={cn(
-              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1",
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1 flex-1 sm:flex-none justify-center sm:justify-start",
               sortBy === 'name' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
             )}
           >
@@ -98,17 +98,18 @@ export function TransactionList({ transactions }: TransactionListProps) {
           <button
             onClick={() => handleSort('price')}
             className={cn(
-              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1",
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer flex items-center gap-1 flex-1 sm:flex-none justify-center sm:justify-start",
               sortBy === 'price' ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
             )}
           >
-            Total Amount
+            <span className="hidden sm:inline">Total Amount</span>
+            <span className="sm:hidden">Amount</span>
             {sortBy === 'price' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
           </button>
         </div>
       </div>
 
-      {/* Column Headers */}
+      {/* Column Headers — desktop only */}
       <div className="hidden sm:flex items-center gap-4 px-5 text-xs font-medium text-zinc-600 uppercase tracking-wider">
         <div className="w-10 shrink-0" />
         <div className="flex-1">Transaction</div>
@@ -136,7 +137,8 @@ export function TransactionList({ transactions }: TransactionListProps) {
               deletingId === txn.id && 'opacity-50 pointer-events-none'
             )}
           >
-            <div className="flex items-center gap-4 px-5 py-4">
+            {/* Desktop layout */}
+            <div className="hidden sm:flex items-center gap-4 px-5 py-4">
               {/* Type Icon */}
               <div
                 className={cn(
@@ -247,6 +249,75 @@ export function TransactionList({ transactions }: TransactionListProps) {
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
+              </div>
+            </div>
+
+            {/* Mobile layout */}
+            <div className="sm:hidden flex items-center gap-3 px-4 py-3.5">
+              {/* Type Icon */}
+              <div
+                className={cn(
+                  'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
+                  txn.type === 'BUY'
+                    ? 'bg-emerald-500/10 text-emerald-400'
+                    : 'bg-red-500/10 text-red-400'
+                )}
+              >
+                {txn.type === 'BUY' ? (
+                  <ArrowUpCircle className="w-4 h-4" />
+                ) : (
+                  <ArrowDownCircle className="w-4 h-4" />
+                )}
+              </div>
+
+              {/* Details */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-semibold text-zinc-100">
+                    {txn.symbol}
+                  </span>
+                  <Badge variant={txn.type === 'BUY' ? 'success' : 'danger'}>
+                    {txn.type}
+                  </Badge>
+                </div>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  {txn.quantity} × {formatCurrency(txn.price_per_share)}
+                  <span className="text-zinc-600"> · </span>
+                  {new Date(txn.executed_at).toLocaleDateString('en-PK', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: '2-digit'
+                  })}
+                </p>
+              </div>
+
+              {/* Amount + Actions */}
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                <p className="text-sm font-semibold text-zinc-100">
+                  {txn.type === 'BUY' ? '-' : '+'}{formatCurrency(txn.quantity * txn.price_per_share)}
+                </p>
+                <div className="flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEditTransactionModal(txn)}
+                    disabled={isPending}
+                    className="text-zinc-500 hover:text-emerald-400 p-1.5 h-auto"
+                    title="Edit"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(txn.id)}
+                    disabled={isPending}
+                    className="text-zinc-500 hover:text-red-400 p-1.5 h-auto"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
               </div>
             </div>
           </Card>
