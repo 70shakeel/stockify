@@ -5,6 +5,7 @@ import { HoldingsTable } from '@/components/dashboard/HoldingsTable'
 import { NewsFeed } from '@/components/news/NewsFeed'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
+import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
 import { Badge } from '@/components/ui/Badge'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
@@ -44,9 +45,7 @@ async function DashboardContent() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="success" pulse>
-            Market Open
-          </Badge>
+          <RefreshPricesButton />
           <ClientAddButton />
         </div>
       </div>
