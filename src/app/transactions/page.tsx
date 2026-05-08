@@ -9,7 +9,7 @@ import type { Transaction } from '@/lib/psx/types'
 
 export const metadata: Metadata = {
   title: 'Transactions — Stockify',
-  description: 'View and manage your buy/sell transaction history.',
+  description: 'View and manage your buy, sell, and dividend transaction history.',
 }
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>

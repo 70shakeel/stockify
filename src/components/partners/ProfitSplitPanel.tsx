@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown, DollarSign } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -59,6 +59,7 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
   const profit = summary?.totalPNL ?? 0
   const realizedPnL = summary?.realizedGainLoss ?? 0
   const unrealizedPnL = summary?.potentialGainLoss ?? 0
+  const totalDividends = summary?.totalDividends ?? 0
 
   function openAdd() {
     const nextColor = PARTNER_COLORS[partners.length % PARTNER_COLORS.length]
@@ -257,6 +258,14 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
                   </span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-zinc-500 flex items-center gap-1">
+                    <DollarSign className="w-3 h-3 text-amber-400" /> Dividends
+                  </span>
+                  <span className={cn('font-medium', totalDividends > 0 ? 'text-amber-400' : 'text-zinc-400')}>
+                    {totalDividends > 0 ? '+' : ''}{formatCurrency(totalDividends)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-zinc-500">Unrealized</span>
                   <span className={cn('font-medium', getChangeColor(unrealizedPnL))}>
                     {unrealizedPnL >= 0 ? '+' : ''}{formatCurrency(unrealizedPnL)}
@@ -293,6 +302,7 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
                     const share = (profit * Number(partner.percentage)) / 100
                     const realizedShare = (realizedPnL * Number(partner.percentage)) / 100
                     const unrealizedShare = (unrealizedPnL * Number(partner.percentage)) / 100
+                    const dividendShare = (totalDividends * Number(partner.percentage)) / 100
                     const isConfirmingDelete = deleteConfirmId === partner.id
 
                     return (
@@ -362,7 +372,7 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
                         </div>
 
                         {/* Profit breakdown */}
-                        <div className="mt-3 grid grid-cols-3 gap-2">
+                        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <div className="bg-zinc-800/50 rounded-lg px-3 py-2">
                             <p className="text-xs text-zinc-500 mb-0.5">Total P&L Share</p>
                             <p className={cn('text-sm font-semibold', getChangeColor(share))}>
@@ -375,6 +385,14 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
                             </p>
                             <p className={cn('text-sm font-medium', getChangeColor(realizedShare))}>
                               {realizedShare >= 0 ? '+' : ''}{formatCurrency(realizedShare)}
+                            </p>
+                          </div>
+                          <div className="bg-zinc-800/50 rounded-lg px-3 py-2">
+                            <p className="text-xs text-zinc-500 mb-0.5 flex items-center gap-1">
+                              <DollarSign className="w-3 h-3 text-amber-400" /> Dividends
+                            </p>
+                            <p className={cn('text-sm font-medium', dividendShare > 0 ? 'text-amber-400' : 'text-zinc-400')}>
+                              {dividendShare > 0 ? '+' : ''}{formatCurrency(dividendShare)}
                             </p>
                           </div>
                           <div className="bg-zinc-800/50 rounded-lg px-3 py-2">

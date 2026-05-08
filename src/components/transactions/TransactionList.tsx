@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import type { Transaction } from '@/lib/psx/types'
 import { deleteTransaction } from '@/actions/transactions'
-import { Trash2, Edit2, ArrowUpCircle, ArrowDownCircle, ChevronUp, ChevronDown } from 'lucide-react'
+import { Trash2, Edit2, ArrowUpCircle, ArrowDownCircle, DollarSign, ChevronUp, ChevronDown } from 'lucide-react'
 import { useState, useTransition } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 
@@ -61,10 +61,58 @@ export function TransactionList({ transactions }: TransactionListProps) {
         <ArrowUpCircle className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
         <p className="text-zinc-400 text-lg">No transactions yet</p>
         <p className="text-zinc-600 text-sm mt-1">
-          Start by adding your first buy or sell transaction
+          Start by adding your first buy, sell, or dividend transaction
         </p>
       </Card>
     )
+  }
+
+  function getTypeIcon(txnType: string) {
+    switch (txnType) {
+      case 'BUY':
+        return <ArrowUpCircle className="w-5 h-5" />
+      case 'SELL':
+        return <ArrowDownCircle className="w-5 h-5" />
+      case 'DIVIDEND':
+        return <DollarSign className="w-5 h-5" />
+      default:
+        return <ArrowUpCircle className="w-5 h-5" />
+    }
+  }
+
+  function getTypeIconSmall(txnType: string) {
+    switch (txnType) {
+      case 'BUY':
+        return <ArrowUpCircle className="w-4 h-4" />
+      case 'SELL':
+        return <ArrowDownCircle className="w-4 h-4" />
+      case 'DIVIDEND':
+        return <DollarSign className="w-4 h-4" />
+      default:
+        return <ArrowUpCircle className="w-4 h-4" />
+    }
+  }
+
+  function getTypeColor(txnType: string) {
+    switch (txnType) {
+      case 'BUY':
+        return 'bg-emerald-500/10 text-emerald-400'
+      case 'SELL':
+        return 'bg-red-500/10 text-red-400'
+      case 'DIVIDEND':
+        return 'bg-amber-500/10 text-amber-400'
+      default:
+        return 'bg-zinc-500/10 text-zinc-400'
+    }
+  }
+
+  function getBadgeVariant(txnType: string): 'success' | 'danger' | 'warning' {
+    switch (txnType) {
+      case 'BUY': return 'success'
+      case 'SELL': return 'danger'
+      case 'DIVIDEND': return 'warning'
+      default: return 'success'
+    }
   }
 
   return (
@@ -121,11 +169,17 @@ export function TransactionList({ transactions }: TransactionListProps) {
 
       <div className="space-y-2">
         {sortedTransactions.map((txn, i) => {
+          const isDividend = txn.type === 'DIVIDEND'
           const grossPnl = txn.type === 'SELL' && txn.cost_basis != null
             ? txn.quantity * (txn.price_per_share - txn.cost_basis) - (txn.fees ?? 0)
             : null
           const tax = grossPnl != null && grossPnl > 0 ? grossPnl * 0.15 : 0
           const pnl = grossPnl != null ? grossPnl - tax : null
+
+          // For dividends, the "amount" is just price_per_share (total dividend)
+          const displayAmount = isDividend
+            ? txn.price_per_share
+            : txn.quantity * txn.price_per_share
 
           return (
           <Card
@@ -143,16 +197,10 @@ export function TransactionList({ transactions }: TransactionListProps) {
               <div
                 className={cn(
                   'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
-                  txn.type === 'BUY'
-                    ? 'bg-emerald-500/10 text-emerald-400'
-                    : 'bg-red-500/10 text-red-400'
+                  getTypeColor(txn.type)
                 )}
               >
-                {txn.type === 'BUY' ? (
-                  <ArrowUpCircle className="w-5 h-5" />
-                ) : (
-                  <ArrowDownCircle className="w-5 h-5" />
-                )}
+                {getTypeIcon(txn.type)}
               </div>
 
               {/* Details */}
@@ -169,13 +217,20 @@ export function TransactionList({ transactions }: TransactionListProps) {
                       year: 'numeric'
                     })}
                   </span>
-                  <Badge variant={txn.type === 'BUY' ? 'success' : 'danger'}>
+                  <Badge variant={getBadgeVariant(txn.type)}>
                     {txn.type}
                   </Badge>
                 </div>
                 <p className="text-xs text-zinc-500 mt-1">
-                  {txn.quantity} shares @ {formatCurrency(txn.price_per_share)}
-                  {txn.fees > 0 && ` • Fee: ${formatCurrency(txn.fees)}`}
+                  {isDividend
+                    ? `Dividend received: ${formatCurrency(txn.price_per_share)}`
+                    : (
+                      <>
+                        {txn.quantity} shares @ {formatCurrency(txn.price_per_share)}
+                        {txn.fees > 0 && ` • Fee: ${formatCurrency(txn.fees)}`}
+                      </>
+                    )
+                  }
                 </p>
                 {txn.type === 'SELL' && txn.cost_basis != null && (
                   <p className="text-xs text-zinc-600 mt-0.5">
@@ -190,7 +245,7 @@ export function TransactionList({ transactions }: TransactionListProps) {
               {/* Amount */}
               <div className="w-32 text-right shrink-0">
                 <p className="text-sm font-semibold text-zinc-100">
-                  {txn.type === 'BUY' ? '-' : '+'}{formatCurrency(txn.quantity * txn.price_per_share)}
+                  {isDividend ? '+' : txn.type === 'BUY' ? '-' : '+'}{formatCurrency(displayAmount)}
                 </p>
               </div>
 
@@ -205,9 +260,13 @@ export function TransactionList({ transactions }: TransactionListProps) {
                 )}
               </div>
 
-              {/* P&L (after tax) */}
+              {/* P&L (after tax) or Dividend income */}
               <div className="w-28 text-right shrink-0">
-                {pnl != null ? (
+                {isDividend ? (
+                  <p className="text-sm font-semibold text-amber-400">
+                    +{formatCurrency(txn.price_per_share)}
+                  </p>
+                ) : pnl != null ? (
                   <div>
                     <p className={cn(
                       'text-sm font-semibold',
@@ -258,16 +317,10 @@ export function TransactionList({ transactions }: TransactionListProps) {
               <div
                 className={cn(
                   'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
-                  txn.type === 'BUY'
-                    ? 'bg-emerald-500/10 text-emerald-400'
-                    : 'bg-red-500/10 text-red-400'
+                  getTypeColor(txn.type)
                 )}
               >
-                {txn.type === 'BUY' ? (
-                  <ArrowUpCircle className="w-4 h-4" />
-                ) : (
-                  <ArrowDownCircle className="w-4 h-4" />
-                )}
+                {getTypeIconSmall(txn.type)}
               </div>
 
               {/* Details */}
@@ -276,12 +329,19 @@ export function TransactionList({ transactions }: TransactionListProps) {
                   <span className="text-sm font-semibold text-zinc-100">
                     {txn.symbol}
                   </span>
-                  <Badge variant={txn.type === 'BUY' ? 'success' : 'danger'}>
+                  <Badge variant={getBadgeVariant(txn.type)}>
                     {txn.type}
                   </Badge>
                 </div>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  {txn.quantity} × {formatCurrency(txn.price_per_share)}
+                  {isDividend
+                    ? `Dividend`
+                    : (
+                      <>
+                        {txn.quantity} × {formatCurrency(txn.price_per_share)}
+                      </>
+                    )
+                  }
                   <span className="text-zinc-600"> · </span>
                   {new Date(txn.executed_at).toLocaleDateString('en-PK', {
                     day: 'numeric',
@@ -293,8 +353,11 @@ export function TransactionList({ transactions }: TransactionListProps) {
 
               {/* Amount + Actions */}
               <div className="shrink-0 flex flex-col items-end gap-1">
-                <p className="text-sm font-semibold text-zinc-100">
-                  {txn.type === 'BUY' ? '-' : '+'}{formatCurrency(txn.quantity * txn.price_per_share)}
+                <p className={cn(
+                  "text-sm font-semibold",
+                  isDividend ? "text-amber-400" : "text-zinc-100"
+                )}>
+                  {isDividend ? '+' : txn.type === 'BUY' ? '-' : '+'}{formatCurrency(displayAmount)}
                 </p>
                 <div className="flex items-center gap-0.5">
                   <Button

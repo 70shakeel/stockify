@@ -61,6 +61,7 @@ function enrichWithCostBasis<T extends {
       } else if (tx.type === 'SELL') {
         tx.cost_basis = consumeSellLots(lots, qty)
       }
+      // DIVIDEND rows don't affect lots
     }
   }
 
@@ -217,6 +218,7 @@ export async function getPortfolioSummary(): Promise<{
   let totalFees = 0
   let totalBuyValue = 0
   let totalSellValue = 0
+  let totalDividends = 0
 
   for (const tx of enrichedTxs) {
     const qty = Number(tx.quantity)
@@ -234,6 +236,8 @@ export async function getPortfolioSummary(): Promise<{
       const tax = grossPnl > 0 ? grossPnl * CAPITAL_GAINS_TAX_RATE : 0
       totalTaxPaid += tax
       realizedGainLoss += grossPnl - tax
+    } else if (tx.type === 'DIVIDEND') {
+      totalDividends += price // price_per_share holds the total dividend amount
     }
   }
 
@@ -244,17 +248,18 @@ export async function getPortfolioSummary(): Promise<{
       data: {
         totalInvested: 0,
         currentValue: 0,
-        totalGainLoss: realizedGainLoss,
+        totalGainLoss: realizedGainLoss + totalDividends,
         totalGainLossPercent: 0,
         totalFees,
         holdingsCount: 0,
         realizedGainLoss,
         potentialGainLoss: 0,
-        totalPNL: realizedGainLoss,
+        totalPNL: realizedGainLoss + totalDividends,
         investmentAvailable,
         totalAddedFunds,
         totalWithdrawnFunds,
         totalTaxPaid,
+        totalDividends,
       },
       error: null,
     }
@@ -280,7 +285,7 @@ export async function getPortfolioSummary(): Promise<{
   const totalInvested = activeHoldings.reduce((sum, h) => sum + Number(h.total_invested), 0)
   const currentValue = activeHoldings.reduce((sum, h) => sum + Number(h.current_value), 0)
   const potentialGainLoss = currentValue - totalInvested
-  const totalPNL = potentialGainLoss + realizedGainLoss
+  const totalPNL = potentialGainLoss + realizedGainLoss + totalDividends
   const totalGainLossPercent = totalInvested > 0 ? (potentialGainLoss / totalInvested) * 100 : 0
 
   return {
@@ -298,6 +303,7 @@ export async function getPortfolioSummary(): Promise<{
       totalAddedFunds,
       totalWithdrawnFunds,
       totalTaxPaid,
+      totalDividends,
     },
     error: null,
   }
@@ -371,7 +377,7 @@ const CAPITAL_GAINS_TAX_RATE = 0.15
 function buildPortfolioPositions(
   transactions: Array<{
     symbol: string
-    type: 'BUY' | 'SELL'
+    type: 'BUY' | 'SELL' | 'DIVIDEND'
     quantity: number
     price_per_share: number
     fees: number | null
@@ -379,8 +385,14 @@ function buildPortfolioPositions(
   }>,
   stockMap: Map<string, { symbol: string; name: string; last_price: number | string | null }>,
 ): PortfolioPosition[] {
-  // Extend PortfolioPosition with a per-symbol FIFO lot queue (internal only)
-  type PositionWithLots = PortfolioPosition & { lots: Lot[] }
+  // Extend PortfolioPosition with internal tracking fields
+  type PositionWithLots = PortfolioPosition & {
+    lots: Lot[]
+    // Weighted-average cost tracking (price-only, no fees)
+    buy_price_cost: number  // sum of (qty × price) for all buys in current lot group
+    buy_price_qty: number   // sum of qty for all buys in current lot group
+    total_dividends: number
+  }
 
   const positions = new Map<string, PositionWithLots>()
 
@@ -414,6 +426,9 @@ function buildPortfolioPositions(
         total_fees: 0,
         status: 'CLOSED',
         lots: [],
+        buy_price_cost: 0,
+        buy_price_qty: 0,
+        total_dividends: 0,
       })
     }
 
@@ -426,12 +441,22 @@ function buildPortfolioPositions(
       // addBuyLot handles lot-reset when position was fully closed
       addBuyLot(position.lots, quantity, pricePerShare)
 
+      // If the position was fully closed before this buy, reset the
+      // weighted-average accumulators (fresh lot group).
+      if (position.open_quantity <= 0) {
+        position.buy_price_cost = 0
+        position.buy_price_qty = 0
+      }
+
       const buyCost = quantity * pricePerShare + fees
       position.bought_quantity += quantity
       position.open_quantity += quantity
       position.total_buy_cost += buyCost
       position.invested_amount += buyCost
-    } else {
+      // Track price-only cost for weighted-average (no fees)
+      position.buy_price_cost += quantity * pricePerShare
+      position.buy_price_qty += quantity
+    } else if (tx.type === 'SELL') {
       const sellProceeds = quantity * pricePerShare - fees
       position.sold_quantity += quantity
       position.total_sale_value += quantity * pricePerShare
@@ -448,26 +473,36 @@ function buildPortfolioPositions(
       position.realized_gain_loss += grossPnl - tax
       position.open_quantity -= sellQuantity
       position.invested_amount -= soldCostBasis
+      // NOTE: buy_price_cost and buy_price_qty are NOT changed on sell
+      // This is what keeps avg cost fixed on partial sells
+    } else if (tx.type === 'DIVIDEND') {
+      position.total_dividends += pricePerShare // total dividend amount
     }
   }
 
   return [...positions.values()]
-    .map(({ lots, ...position }) => {
-      // FIFO avg cost = weighted avg of remaining (unsold) lots (fees excluded)
-      const fifoAvgCost = lotsAvgCost(lots)
-      const fifoOpenCost = lotsTotalCost(lots)
+    .map(({ lots, buy_price_cost, buy_price_qty, total_dividends, ...position }) => {
+      // Weighted-average cost of all buys in the current lot group (fees excluded).
+      // This value does NOT change when partial sells happen — only resets when
+      // the position is fully closed and a new buy starts a fresh lot group.
+      const weightedAvgCost = buy_price_qty > 0
+        ? buy_price_cost / buy_price_qty
+        : 0
 
-      position.avg_buy_cost = fifoAvgCost
+      position.avg_buy_cost = weightedAvgCost
       position.avg_sale_price = position.sold_quantity > 0
         ? position.total_sale_value / position.sold_quantity
         : 0
-      position.avg_open_cost = position.open_quantity > 0 ? fifoAvgCost : 0
+      position.avg_open_cost = position.open_quantity > 0 ? weightedAvgCost : 0
+
+      // Unrealized P&L uses weighted avg cost × open qty vs current market value
+      const openCostAtAvg = position.open_quantity * weightedAvgCost
       position.unrealized_gain_loss = position.open_quantity > 0
-        ? (position.current_price * position.open_quantity) - fifoOpenCost
+        ? (position.current_price * position.open_quantity) - openCostAtAvg
         : 0
       position.total_gain_loss = position.realized_gain_loss + position.unrealized_gain_loss
-      const totalCostBasis = position.bought_quantity > 0
-        ? fifoOpenCost + (position.realized_proceeds - position.realized_gain_loss)
+      const totalCostBasis = buy_price_qty > 0
+        ? openCostAtAvg + (position.realized_proceeds - position.realized_gain_loss)
         : 0
       position.total_gain_loss_percent = totalCostBasis > 0
         ? (position.total_gain_loss / totalCostBasis) * 100

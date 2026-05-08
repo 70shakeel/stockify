@@ -8,13 +8,13 @@ import { Badge } from '@/components/ui/Badge'
 import { useAppStore } from '@/store/useAppStore'
 import { updateTransaction, addTransaction } from '@/actions/transactions'
 import { searchStocks } from '@/actions/stocks'
-import { ArrowUpCircle, ArrowDownCircle, Search } from 'lucide-react'
+import { ArrowUpCircle, ArrowDownCircle, DollarSign, Search } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 interface OptimisticTransaction {
   id?: string
   symbol: string
-  type: 'BUY' | 'SELL'
+  type: 'BUY' | 'SELL' | 'DIVIDEND'
   quantity: number
   price_per_share: number
   status: 'pending' | 'success' | 'error'
@@ -29,7 +29,7 @@ export function AddTransactionModal() {
     closeTransactionModal,
   } = useAppStore()
 
-  const [type, setType] = useState<'BUY' | 'SELL'>('BUY')
+  const [type, setType] = useState<'BUY' | 'SELL' | 'DIVIDEND'>('BUY')
   const [symbol, setSymbol] = useState('')
   const [quantity, setQuantity] = useState('')
   const [price, setPrice] = useState('')
@@ -58,7 +58,7 @@ export function AddTransactionModal() {
   useEffect(() => {
     if (isTransactionModalOpen) {
       if (editingTransaction) {
-        setType(editingTransaction.type as 'BUY' | 'SELL')
+        setType(editingTransaction.type as 'BUY' | 'SELL' | 'DIVIDEND')
         setSymbol(editingTransaction.symbol)
         setQuantity(editingTransaction.quantity.toString())
         setPrice(editingTransaction.price_per_share.toString())
@@ -106,15 +106,20 @@ export function AddTransactionModal() {
     closeTransactionModal()
   }
 
-  const parsedQty = parseInt(quantity) || 0
+  const isDividend = type === 'DIVIDEND'
+  const parsedQty = isDividend ? 1 : (parseInt(quantity) || 0)
   const parsedPrice = parseFloat(price) || 0
   const rawFee = parseFloat(fees) || 0
 
-  const calculatedFee = feeType === '%' 
-    ? (parsedQty * parsedPrice) * (rawFee / 100)
-    : rawFee
+  const calculatedFee = isDividend
+    ? 0
+    : feeType === '%' 
+      ? (parsedQty * parsedPrice) * (rawFee / 100)
+      : rawFee
 
-  const totalCost = (parsedQty * parsedPrice) + calculatedFee
+  const totalCost = isDividend
+    ? parsedPrice
+    : (parsedQty * parsedPrice) + calculatedFee
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -123,9 +128,9 @@ export function AddTransactionModal() {
     const txnData = {
       symbol: symbol.toUpperCase(),
       type,
-      quantity: parsedQty,
+      quantity: isDividend ? 1 : parsedQty,
       price_per_share: parsedPrice,
-      fees: calculatedFee,
+      fees: isDividend ? 0 : calculatedFee,
       notes: notes || undefined,
       executed_at: new Date(date).toISOString(),
     }
@@ -182,6 +187,18 @@ export function AddTransactionModal() {
             <ArrowDownCircle className="w-4 h-4" />
             SELL
           </button>
+          <button
+            type="button"
+            onClick={() => setType('DIVIDEND')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-all duration-200 cursor-pointer ${
+              type === 'DIVIDEND'
+                ? 'bg-amber-500/15 text-amber-400 shadow-sm border border-amber-500/20'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            DIVIDEND
+          </button>
         </div>
 
         {/* Symbol with Autocomplete */}
@@ -215,7 +232,7 @@ export function AddTransactionModal() {
                       type="button"
                       onClick={() => {
                         setSymbol(stock.symbol)
-                        if (stock.last_price > 0) {
+                        if (!isDividend && stock.last_price > 0) {
                           setPrice(stock.last_price.toString())
                         }
                         setShowSuggestions(false)
@@ -242,82 +259,97 @@ export function AddTransactionModal() {
           )}
         </div>
 
-        {/* Quantity + Price */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Quantity + Price (or just Dividend Amount) */}
+        {isDividend ? (
           <Input
-            label="Quantity"
+            label="Dividend Amount (PKR)"
             type="number"
-            placeholder="100"
-            min="1"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            required
-          />
-          <Input
-            label="Price per Share"
-            type="number"
-            placeholder="95.50"
+            placeholder="e.g. 5000"
             step="0.01"
             min="0"
-            value={price || transactionModalPrice?.toString() || ''}
+            value={price}
             onChange={(e) => setPrice(e.target.value)}
             required
           />
-        </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Quantity"
+              type="number"
+              placeholder="100"
+              min="1"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              required
+            />
+            <Input
+              label="Price per Share"
+              type="number"
+              placeholder="95.50"
+              step="0.01"
+              min="0"
+              value={price || transactionModalPrice?.toString() || ''}
+              onChange={(e) => setPrice(e.target.value)}
+              required
+            />
+          </div>
+        )}
 
-        {/* Fees */}
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-zinc-300">
-            Fees / Commission (optional)
-          </label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                type="number"
-                placeholder={feeType === '%' ? "0.15" : "0.00"}
-                step="0.01"
-                min="0"
-                value={fees}
-                onChange={(e) => setFees(e.target.value)}
-                className="w-full rounded-lg border bg-zinc-900/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 border-zinc-700/50 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none hover:border-zinc-600 transition-all duration-200"
-              />
+        {/* Fees — hidden for dividends */}
+        {!isDividend && (
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-zinc-300">
+              Fees / Commission (optional)
+            </label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="number"
+                  placeholder={feeType === '%' ? "0.15" : "0.00"}
+                  step="0.01"
+                  min="0"
+                  value={fees}
+                  onChange={(e) => setFees(e.target.value)}
+                  className="w-full rounded-lg border bg-zinc-900/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 border-zinc-700/50 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none hover:border-zinc-600 transition-all duration-200"
+                />
+              </div>
+              <div className="flex bg-zinc-800/50 p-1 rounded-lg border border-zinc-700/50">
+                <button
+                  type="button"
+                  onClick={() => setFeeType('PKR')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                    feeType === 'PKR' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  PKR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeeType('%')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                    feeType === '%' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  %
+                </button>
+              </div>
             </div>
-            <div className="flex bg-zinc-800/50 p-1 rounded-lg border border-zinc-700/50">
+            {feeType === '%' && rawFee > 0 && parsedQty > 0 && parsedPrice > 0 && (
+              <p className="text-xs text-emerald-400/80 mt-1">
+                Calculated fee: {formatCurrency(calculatedFee)}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2 mt-2">
               <button
                 type="button"
-                onClick={() => setFeeType('PKR')}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-                  feeType === 'PKR' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
-                }`}
+                onClick={() => { setFeeType('%'); setFees('0.15') }}
+                className="text-xs font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-md transition-colors cursor-pointer"
               >
-                PKR
-              </button>
-              <button
-                type="button"
-                onClick={() => setFeeType('%')}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-                  feeType === '%' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                %
+                0.15% (Standard Fee)
               </button>
             </div>
           </div>
-          {feeType === '%' && rawFee > 0 && parsedQty > 0 && parsedPrice > 0 && (
-            <p className="text-xs text-emerald-400/80 mt-1">
-              Calculated fee: {formatCurrency(calculatedFee)}
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2 mt-2">
-            <button
-              type="button"
-              onClick={() => { setFeeType('%'); setFees('0.15') }}
-              className="text-xs font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-md transition-colors cursor-pointer"
-            >
-              0.15% (Standard Fee)
-            </button>
-          </div>
-        </div>
+        )}
 
         {/* Date */}
         <Input
@@ -335,7 +367,7 @@ export function AddTransactionModal() {
             Notes (optional)
           </label>
           <textarea
-            placeholder="Add any notes about this transaction..."
+            placeholder={isDividend ? "e.g. Q1 2025 dividend payout" : "Add any notes about this transaction..."}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
@@ -344,16 +376,16 @@ export function AddTransactionModal() {
         </div>
 
         {/* Total Summary */}
-        {quantity && price && (
+        {price && (isDividend || quantity) && (
           <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-zinc-800/30 border border-zinc-700/30">
             <span className="text-sm text-zinc-400">
-              Total {type === 'BUY' ? 'Cost' : 'Proceeds'}
+              {isDividend ? 'Dividend Income' : type === 'BUY' ? 'Total Cost' : 'Total Proceeds'}
             </span>
             <div className="flex items-center gap-2">
               <span className="text-lg font-semibold text-zinc-100">
                 {formatCurrency(totalCost)}
               </span>
-              <Badge variant={type === 'BUY' ? 'success' : 'danger'}>
+              <Badge variant={isDividend ? 'warning' : type === 'BUY' ? 'success' : 'danger'}>
                 {type}
               </Badge>
             </div>
@@ -387,13 +419,13 @@ export function AddTransactionModal() {
           </Button>
           <Button
             type="submit"
-            variant={type === 'BUY' ? 'primary' : 'danger'}
+            variant={isDividend ? 'primary' : type === 'BUY' ? 'primary' : 'danger'}
             isLoading={isPending}
             className="flex-1"
           >
             {editingTransaction 
               ? 'Save Changes' 
-              : type === 'BUY' ? 'Buy Shares' : 'Sell Shares'
+              : isDividend ? 'Record Dividend' : type === 'BUY' ? 'Buy Shares' : 'Sell Shares'
             }
           </Button>
         </div>

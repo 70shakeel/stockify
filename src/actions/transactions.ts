@@ -82,11 +82,45 @@ export async function addTransaction(input: TransactionInput) {
     return { error: 'Price per share cannot be negative' }
   }
 
-  if (!['BUY', 'SELL'].includes(input.type)) {
-    return { error: 'Transaction type must be BUY or SELL' }
+  if (!['BUY', 'SELL', 'DIVIDEND'].includes(input.type)) {
+    return { error: 'Transaction type must be BUY, SELL, or DIVIDEND' }
   }
 
   const normalizedSymbol = input.symbol.toUpperCase().trim()
+
+  // DIVIDEND transactions: no share checks, no cost basis
+  if (input.type === 'DIVIDEND') {
+    // Ensure stock exists in DB cache
+    await supabase.from('stocks').upsert({
+      symbol: normalizedSymbol,
+      name: normalizedSymbol,
+      sector: 'Unknown',
+    }, { onConflict: 'symbol', ignoreDuplicates: true })
+
+    refreshStockPrice(normalizedSymbol).catch(console.error)
+
+    const { data, error } = await supabase.from('transactions').insert({
+      user_id: user.id,
+      symbol: normalizedSymbol,
+      type: 'DIVIDEND',
+      quantity: 1,
+      price_per_share: input.price_per_share, // total dividend amount
+      fees: 0,
+      cost_basis: null,
+      notes: input.notes || null,
+      executed_at: input.executed_at || new Date().toISOString(),
+    }).select().single()
+
+    if (error) {
+      console.error('Dividend insert error:', error)
+      return { error: error.message }
+    }
+
+    revalidatePath('/portfolio')
+    revalidatePath('/transactions')
+    revalidatePath('/')
+    return { data, error: null }
+  }
 
   // For SELL: verify user has enough shares, then compute cost basis via the
   // lot-aware replay (same as updateTransaction) so backdated sells get the
@@ -300,6 +334,7 @@ export async function getTransactions(symbol?: string) {
       } else if (tx.type === 'SELL') {
         tx.cost_basis = consumeSellLots(lots, qty)
       }
+      // DIVIDEND rows don't affect lots
     }
   }
 

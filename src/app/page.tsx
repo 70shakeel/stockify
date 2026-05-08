@@ -1,11 +1,13 @@
 import { Suspense } from 'react'
 import { getPortfolioSummary, getPortfolioHoldings } from '@/actions/portfolio'
+import { getPartners } from '@/actions/partners'
 import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary'
 import { HoldingsTable } from '@/components/dashboard/HoldingsTable'
 import { NewsFeed } from '@/components/news/NewsFeed'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
 import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
+import { ProfitSplitSummary } from '@/components/dashboard/ProfitSplitSummary'
 import { Badge } from '@/components/ui/Badge'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
@@ -29,9 +31,10 @@ async function DashboardContent() {
     return <HeroSection />
   }
 
-  const [summaryResult, holdingsResult] = await Promise.all([
+  const [summaryResult, holdingsResult, partnersResult] = await Promise.all([
     getPortfolioSummary(),
     getPortfolioHoldings(),
+    getPartners(),
   ])
 
   return (
@@ -53,6 +56,14 @@ async function DashboardContent() {
       {/* Summary Cards */}
       {summaryResult.data && (
         <PortfolioSummary summary={summaryResult.data} />
+      )}
+
+      {/* Profit Split Summary */}
+      {summaryResult.data && partnersResult.data.length > 0 && (
+        <ProfitSplitSummary
+          partners={partnersResult.data}
+          summary={summaryResult.data}
+        />
       )}
 
       {/* Holdings */}

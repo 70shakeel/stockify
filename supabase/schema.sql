@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   symbol TEXT NOT NULL REFERENCES stocks(symbol),
-  type TEXT NOT NULL CHECK (type IN ('BUY', 'SELL')),
+  type TEXT NOT NULL CHECK (type IN ('BUY', 'SELL', 'DIVIDEND')),
   quantity INTEGER NOT NULL CHECK (quantity > 0),
   price_per_share NUMERIC(12,2) NOT NULL CHECK (price_per_share >= 0),
   fees NUMERIC(12,2) DEFAULT 0,
@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS transactions (
 
 -- Migration: add cost_basis to existing deployments
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cost_basis NUMERIC(12,4) DEFAULT NULL;
+
+-- Migration: allow DIVIDEND type
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
+ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN ('BUY', 'SELL', 'DIVIDEND'));
 
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
@@ -84,7 +88,11 @@ CREATE INDEX IF NOT EXISTS idx_investments_invested_at ON investments(invested_a
 -- dropped to 0 (position fully closed), so a fresh buy after a full sell-off
 -- is treated as a brand-new position.
 CREATE OR REPLACE VIEW portfolio_holdings AS
-WITH tx_ordered AS (
+WITH buy_sell_only AS (
+  -- Exclude DIVIDEND rows from holdings calculations
+  SELECT * FROM transactions WHERE type IN ('BUY', 'SELL')
+),
+tx_ordered AS (
   SELECT
     t.*,
     COALESCE(
@@ -96,7 +104,7 @@ WITH tx_ordered AS (
         ),
       0
     ) AS prev_net_qty
-  FROM transactions t
+  FROM buy_sell_only t
 ),
 tx_with_lot AS (
   SELECT
@@ -113,56 +121,19 @@ current_lot AS (
   FROM tx_with_lot
   GROUP BY user_id, symbol
 ),
--- Net remaining quantity in the current lot (total buys − total sells)
-lot_net_qty AS (
+-- Weighted-average cost: total cost of ALL buys in current lot / total buy qty.
+-- This stays constant regardless of partial sells (only resets on full close).
+lot_buy_avg AS (
   SELECT
     t.user_id,
     t.symbol,
-    SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) AS net_qty
+    SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE 0 END)::NUMERIC AS total_buy_qty,
+    SUM(CASE WHEN t.type = 'BUY' THEN t.quantity * t.price_per_share ELSE 0 END)::NUMERIC AS total_buy_cost,
+    SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)::NUMERIC AS net_qty
   FROM tx_with_lot t
   JOIN current_lot cl ON cl.user_id = t.user_id AND cl.symbol = t.symbol
                       AND t.lot_id = cl.max_lot_id
   GROUP BY t.user_id, t.symbol
-),
--- For each BUY in the current lot, cumulative qty counted from newest → oldest.
--- This lets us determine which shares are still unsold under FIFO.
-lot_buys_ranked AS (
-  SELECT
-    t.user_id,
-    t.symbol,
-    t.quantity,
-    t.price_per_share,
-    SUM(t.quantity) OVER (
-      PARTITION BY t.user_id, t.symbol
-      ORDER BY t.executed_at DESC, t.created_at DESC, t.id DESC
-    ) AS cum_from_end
-  FROM tx_with_lot t
-  JOIN current_lot cl ON cl.user_id = t.user_id AND cl.symbol = t.symbol
-                      AND t.lot_id = cl.max_lot_id
-  WHERE t.type = 'BUY'
-),
--- FIFO open qty per BUY lot:
---   open_qty = GREATEST(0, LEAST(buy_qty, net_qty − (cum_from_end − buy_qty)))
--- Newest lots fill up remaining shares first; oldest lots are consumed by sells.
-fifo_agg AS (
-  SELECT
-    lb.user_id,
-    lb.symbol,
-    SUM(
-      GREATEST(0, LEAST(
-        lb.quantity,
-        lnq.net_qty - (lb.cum_from_end - lb.quantity)
-      ))
-    )::NUMERIC AS total_open_qty,
-    SUM(
-      GREATEST(0, LEAST(
-        lb.quantity,
-        lnq.net_qty - (lb.cum_from_end - lb.quantity)
-      )) * lb.price_per_share
-    )::NUMERIC AS total_open_cost
-  FROM lot_buys_ranked lb
-  JOIN lot_net_qty lnq ON lnq.user_id = lb.user_id AND lnq.symbol = lb.symbol
-  GROUP BY lb.user_id, lb.symbol
 )
 SELECT
   t.user_id,
@@ -173,38 +144,41 @@ SELECT
   s.change AS price_change,
   s.change_percent AS price_change_percent,
   SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) AS net_quantity,
-  -- FIFO avg_cost: weighted avg of open (unsold) lots only
+  -- Weighted avg cost of all buys in the current lot (does NOT change on partial sells)
   CASE
-    WHEN fa.total_open_qty > 0
-    THEN ROUND(fa.total_open_cost / fa.total_open_qty, 2)
+    WHEN lba.total_buy_qty > 0
+    THEN ROUND(lba.total_buy_cost / lba.total_buy_qty, 2)
     ELSE 0
   END AS avg_cost,
-  -- total_invested: net_qty × fifo avg_cost
+  -- total_invested: net_qty × weighted avg cost
   CASE
-    WHEN fa.total_open_qty > 0
+    WHEN lba.total_buy_qty > 0
     THEN SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)
-         * ROUND(fa.total_open_cost / fa.total_open_qty, 2)
+         * ROUND(lba.total_buy_cost / lba.total_buy_qty, 2)
     ELSE 0
   END AS total_invested,
   SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price AS current_value,
-  -- unrealized_gain_loss: current_value − open_cost
+  -- unrealized_gain_loss
   CASE
-    WHEN fa.total_open_qty > 0
+    WHEN lba.total_buy_qty > 0
      AND SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) > 0
     THEN (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price)
-         - fa.total_open_cost
+         - (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)
+            * ROUND(lba.total_buy_cost / lba.total_buy_qty, 2))
     ELSE 0
   END AS unrealized_gain_loss,
   -- unrealized_gain_loss_percent
   CASE
-    WHEN fa.total_open_qty > 0
-     AND fa.total_open_cost > 0
+    WHEN lba.total_buy_qty > 0
+     AND lba.total_buy_cost > 0
      AND SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) > 0
     THEN ROUND(
       (
         (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END) * s.last_price)
-        - fa.total_open_cost
-      ) / fa.total_open_cost * 100,
+        - (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)
+           * ROUND(lba.total_buy_cost / lba.total_buy_qty, 2))
+      ) / (SUM(CASE WHEN t.type = 'BUY' THEN t.quantity ELSE -t.quantity END)
+           * ROUND(lba.total_buy_cost / lba.total_buy_qty, 2)) * 100,
       2
     )
     ELSE 0
@@ -214,9 +188,9 @@ SELECT
 FROM tx_with_lot t
 JOIN current_lot cl ON cl.user_id = t.user_id AND cl.symbol = t.symbol
 JOIN stocks s ON s.symbol = t.symbol
-JOIN fifo_agg fa ON fa.user_id = t.user_id AND fa.symbol = t.symbol
+JOIN lot_buy_avg lba ON lba.user_id = t.user_id AND lba.symbol = t.symbol
 GROUP BY t.user_id, t.symbol, s.name, s.sector, s.last_price, s.change, s.change_percent,
-         cl.max_lot_id, fa.total_open_qty, fa.total_open_cost;
+         cl.max_lot_id, lba.total_buy_qty, lba.total_buy_cost;
 
 
 -- 5b. PARTNERS TABLE

@@ -68,7 +68,7 @@ export interface Transaction {
   id: string
   user_id: string
   symbol: string
-  type: 'BUY' | 'SELL'
+  type: 'BUY' | 'SELL' | 'DIVIDEND'
   quantity: number
   price_per_share: number
   fees: number
@@ -81,7 +81,7 @@ export interface Transaction {
 
 export interface TransactionInput {
   symbol: string
-  type: 'BUY' | 'SELL'
+  type: 'BUY' | 'SELL' | 'DIVIDEND'
   quantity: number
   price_per_share: number
   fees?: number
@@ -147,4 +147,5 @@ export interface PortfolioSummaryData {
   totalAddedFunds: number
   totalWithdrawnFunds: number
   totalTaxPaid: number
+  totalDividends: number
 }

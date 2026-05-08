@@ -10,6 +10,7 @@ import {
   Layers,
   Landmark,
   ShieldAlert,
+  DollarSign,
 } from 'lucide-react'
 
 interface PortfolioSummaryProps {
@@ -52,6 +53,13 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
       icon: ShieldAlert,
       color: 'text-amber-400',
       bgColor: 'bg-amber-500/10',
+    },
+    {
+      label: 'Dividends',
+      value: formatCurrencyNoDecimals(summary.totalDividends),
+      icon: DollarSign,
+      color: getChangeColor(summary.totalDividends),
+      bgColor: summary.totalDividends > 0 ? 'bg-amber-500/10' : 'bg-zinc-500/10',
     },
     {
       label: 'Potential P&L',
