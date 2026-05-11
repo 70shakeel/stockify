@@ -393,138 +393,149 @@ function buildPortfolioPositions(
   }>,
   stockMap: Map<string, { symbol: string; name: string; last_price: number | string | null }>,
 ): PortfolioPosition[] {
-  type PositionAccum = PortfolioPosition & {
-    // Weighted-average cost tracking (price-only, no fees)
-    buy_price_cost: number  // sum of (qty × price) for all buys in current lot group
-    buy_price_qty: number   // sum of qty for all buys in current lot group
-    total_dividends: number
+  type PositionAccum = {
+    symbol: string
+    stock_name: string
+    current_price: number
+    bought_quantity: number
+    sold_quantity: number
+    open_quantity: number
+    total_buy_cost: number
+    total_sale_value: number
+    invested_amount: number
+    realized_proceeds: number
+    realized_gain_loss: number
+    tax_paid: number
+    total_fees: number
+    buy_price_cost: number
+    buy_price_qty: number
   }
 
-  const positions = new Map<string, PositionAccum>()
-
+  // Group transactions by symbol
+  const bySymbol = new Map<string, typeof transactions>()
   for (const tx of transactions) {
-    const stock = stockMap.get(tx.symbol)
-    const currentPrice = Number(stock?.last_price || 0)
-    const fees = Number(tx.fees || 0)
-    const quantity = Number(tx.quantity)
-    const pricePerShare = Number(tx.price_per_share)
+    const bucket = bySymbol.get(tx.symbol) ?? []
+    bucket.push(tx)
+    bySymbol.set(tx.symbol, bucket)
+  }
 
-    if (!positions.has(tx.symbol)) {
-      positions.set(tx.symbol, {
-        symbol: tx.symbol,
-        stock_name: stock?.name || tx.symbol,
-        current_price: currentPrice,
-        bought_quantity: 0,
-        sold_quantity: 0,
-        open_quantity: 0,
-        avg_buy_cost: 0,
-        avg_sale_price: 0,
-        avg_open_cost: 0,
-        total_buy_cost: 0,
-        total_sale_value: 0,
-        invested_amount: 0,
-        realized_proceeds: 0,
-        realized_gain_loss: 0,
-        tax_paid: 0,
-        unrealized_gain_loss: 0,
-        total_gain_loss: 0,
-        total_gain_loss_percent: 0,
-        total_fees: 0,
-        status: 'CLOSED',
-        buy_price_cost: 0,
-        buy_price_qty: 0,
-        total_dividends: 0,
+  const allPositions: PortfolioPosition[] = []
+
+  for (const [symbol, symbolTxs] of bySymbol) {
+    const stock = stockMap.get(symbol)
+    const currentPrice = Number(stock?.last_price || 0)
+    const stockName = stock?.name || symbol
+
+    // Each lot group becomes a separate position.
+    // A new lot group starts when a BUY happens after the position was fully closed.
+    const lotGroups: PositionAccum[] = []
+    let current: PositionAccum | null = null
+
+    for (const tx of symbolTxs) {
+      const fees = Number(tx.fees || 0)
+      const quantity = Number(tx.quantity)
+      const pricePerShare = Number(tx.price_per_share)
+
+      if (tx.type === 'BUY') {
+        if (!current || current.open_quantity <= 0) {
+          // Start a new lot group
+          if (current) lotGroups.push(current)
+          current = {
+            symbol,
+            stock_name: stockName,
+            current_price: currentPrice,
+            bought_quantity: 0,
+            sold_quantity: 0,
+            open_quantity: 0,
+            total_buy_cost: 0,
+            total_sale_value: 0,
+            invested_amount: 0,
+            realized_proceeds: 0,
+            realized_gain_loss: 0,
+            tax_paid: 0,
+            total_fees: 0,
+            buy_price_cost: 0,
+            buy_price_qty: 0,
+          }
+        }
+
+        const buyCost = quantity * pricePerShare + fees
+        current.bought_quantity += quantity
+        current.open_quantity += quantity
+        current.total_buy_cost += buyCost
+        current.invested_amount += buyCost
+        current.buy_price_cost += quantity * pricePerShare
+        current.buy_price_qty += quantity
+        current.total_fees += fees
+      } else if (tx.type === 'SELL' && current) {
+        const sellProceeds = quantity * pricePerShare - fees
+        current.sold_quantity += quantity
+        current.total_sale_value += quantity * pricePerShare
+        current.realized_proceeds += sellProceeds
+        current.total_fees += fees
+
+        const sellQuantity = Math.min(quantity, current.open_quantity)
+        const weightedAvgCost = current.buy_price_qty > 0
+          ? current.buy_price_cost / current.buy_price_qty
+          : 0
+        const soldCostBasis = weightedAvgCost * sellQuantity
+
+        const grossPnl = sellProceeds - soldCostBasis
+        const tax = grossPnl > 0 ? grossPnl * CAPITAL_GAINS_TAX_RATE : 0
+        current.tax_paid += tax
+        current.realized_gain_loss += grossPnl - tax
+        current.open_quantity -= sellQuantity
+        current.invested_amount -= soldCostBasis
+      }
+    }
+    if (current) lotGroups.push(current)
+
+    // Convert each lot group to a PortfolioPosition
+    for (const pos of lotGroups) {
+      const weightedAvgCost = pos.buy_price_qty > 0
+        ? pos.buy_price_cost / pos.buy_price_qty
+        : 0
+
+      const avgSalePrice = pos.sold_quantity > 0
+        ? pos.total_sale_value / pos.sold_quantity
+        : 0
+
+      const openCostAtAvg = pos.open_quantity * weightedAvgCost
+      const unrealizedGainLoss = pos.open_quantity > 0
+        ? (pos.current_price * pos.open_quantity) - openCostAtAvg
+        : 0
+      const totalGainLoss = pos.realized_gain_loss + unrealizedGainLoss
+      const totalCostBasis = pos.buy_price_qty > 0
+        ? openCostAtAvg + (pos.realized_proceeds - pos.realized_gain_loss)
+        : 0
+      const totalGainLossPercent = totalCostBasis > 0
+        ? (totalGainLoss / totalCostBasis) * 100
+        : 0
+
+      allPositions.push({
+        symbol: pos.symbol,
+        stock_name: pos.stock_name,
+        current_price: pos.current_price,
+        bought_quantity: pos.bought_quantity,
+        sold_quantity: pos.sold_quantity,
+        open_quantity: pos.open_quantity,
+        avg_buy_cost: Number(toFiniteNumber(weightedAvgCost).toFixed(2)),
+        avg_sale_price: Number(toFiniteNumber(avgSalePrice).toFixed(2)),
+        avg_open_cost: Number(toFiniteNumber(pos.open_quantity > 0 ? weightedAvgCost : 0).toFixed(2)),
+        total_buy_cost: Number(toFiniteNumber(pos.total_buy_cost).toFixed(2)),
+        total_sale_value: Number(toFiniteNumber(pos.total_sale_value).toFixed(2)),
+        invested_amount: Number(toFiniteNumber(pos.invested_amount).toFixed(2)),
+        realized_proceeds: Number(toFiniteNumber(pos.realized_proceeds).toFixed(2)),
+        realized_gain_loss: Number(toFiniteNumber(pos.realized_gain_loss).toFixed(2)),
+        tax_paid: Number(toFiniteNumber(pos.tax_paid).toFixed(2)),
+        unrealized_gain_loss: Number(toFiniteNumber(unrealizedGainLoss).toFixed(2)),
+        total_gain_loss: Number(toFiniteNumber(totalGainLoss).toFixed(2)),
+        total_gain_loss_percent: Number(toFiniteNumber(totalGainLossPercent).toFixed(2)),
+        total_fees: Number(toFiniteNumber(pos.total_fees).toFixed(2)),
+        status: pos.open_quantity > 0 ? 'OPEN' : 'CLOSED',
       })
     }
-
-    const position = positions.get(tx.symbol)!
-    position.current_price = currentPrice
-    position.stock_name = stock?.name || position.stock_name
-    position.total_fees += fees
-
-    if (tx.type === 'BUY') {
-      if (position.open_quantity <= 0) {
-        position.buy_price_cost = 0
-        position.buy_price_qty = 0
-      }
-
-      const buyCost = quantity * pricePerShare + fees
-      position.bought_quantity += quantity
-      position.open_quantity += quantity
-      position.total_buy_cost += buyCost
-      position.invested_amount += buyCost
-      // Track price-only cost for weighted-average (no fees)
-      position.buy_price_cost += quantity * pricePerShare
-      position.buy_price_qty += quantity
-    } else if (tx.type === 'SELL') {
-      const sellProceeds = quantity * pricePerShare - fees
-      position.sold_quantity += quantity
-      position.total_sale_value += quantity * pricePerShare
-      position.realized_proceeds += sellProceeds
-
-      // Weighted-average cost: use the fixed avg of all buys in the lot group
-      const sellQuantity = Math.min(quantity, position.open_quantity)
-      const weightedAvgCost = position.buy_price_qty > 0
-        ? position.buy_price_cost / position.buy_price_qty
-        : 0
-      const soldCostBasis = weightedAvgCost * sellQuantity
-
-      const grossPnl = sellProceeds - soldCostBasis
-      const tax = grossPnl > 0 ? grossPnl * CAPITAL_GAINS_TAX_RATE : 0
-      position.tax_paid += tax
-      position.realized_gain_loss += grossPnl - tax
-      position.open_quantity -= sellQuantity
-      position.invested_amount -= soldCostBasis
-    } else if (tx.type === 'DIVIDEND') {
-      position.total_dividends += pricePerShare // total dividend amount
-    }
   }
 
-  return [...positions.values()]
-    .map(({ buy_price_cost, buy_price_qty, total_dividends, ...position }) => {
-      // Weighted-average cost of all buys in the current lot group (fees excluded).
-      // This value does NOT change when partial sells happen — only resets when
-      // the position is fully closed and a new buy starts a fresh lot group.
-      const weightedAvgCost = buy_price_qty > 0
-        ? buy_price_cost / buy_price_qty
-        : 0
-
-      position.avg_buy_cost = weightedAvgCost
-      position.avg_sale_price = position.sold_quantity > 0
-        ? position.total_sale_value / position.sold_quantity
-        : 0
-      position.avg_open_cost = position.open_quantity > 0 ? weightedAvgCost : 0
-
-      // Unrealized P&L uses weighted avg cost × open qty vs current market value
-      const openCostAtAvg = position.open_quantity * weightedAvgCost
-      position.unrealized_gain_loss = position.open_quantity > 0
-        ? (position.current_price * position.open_quantity) - openCostAtAvg
-        : 0
-      position.total_gain_loss = position.realized_gain_loss + position.unrealized_gain_loss
-      const totalCostBasis = buy_price_qty > 0
-        ? openCostAtAvg + (position.realized_proceeds - position.realized_gain_loss)
-        : 0
-      position.total_gain_loss_percent = totalCostBasis > 0
-        ? (position.total_gain_loss / totalCostBasis) * 100
-        : 0
-      position.status = position.open_quantity > 0 ? 'OPEN' : 'CLOSED'
-
-      return {
-        ...position,
-        avg_buy_cost: Number(toFiniteNumber(position.avg_buy_cost).toFixed(2)),
-        avg_sale_price: Number(toFiniteNumber(position.avg_sale_price).toFixed(2)),
-        avg_open_cost: Number(toFiniteNumber(position.avg_open_cost).toFixed(2)),
-        total_buy_cost: Number(toFiniteNumber(position.total_buy_cost).toFixed(2)),
-        total_sale_value: Number(toFiniteNumber(position.total_sale_value).toFixed(2)),
-        invested_amount: Number(toFiniteNumber(position.invested_amount).toFixed(2)),
-        realized_proceeds: Number(toFiniteNumber(position.realized_proceeds).toFixed(2)),
-        realized_gain_loss: Number(toFiniteNumber(position.realized_gain_loss).toFixed(2)),
-        tax_paid: Number(toFiniteNumber(position.tax_paid).toFixed(2)),
-        unrealized_gain_loss: Number(toFiniteNumber(position.unrealized_gain_loss).toFixed(2)),
-        total_gain_loss: Number(toFiniteNumber(position.total_gain_loss).toFixed(2)),
-        total_gain_loss_percent: Number(toFiniteNumber(position.total_gain_loss_percent).toFixed(2)),
-        total_fees: Number(toFiniteNumber(position.total_fees).toFixed(2)),
-      }
-    })
-    .sort((a, b) => Math.abs(b.total_gain_loss) - Math.abs(a.total_gain_loss))
+  return allPositions.sort((a, b) => Math.abs(b.total_gain_loss) - Math.abs(a.total_gain_loss))
 }

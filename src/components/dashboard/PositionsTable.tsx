@@ -142,7 +142,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
           <tbody className="divide-y divide-zinc-800/50">
             {sorted.map((position, i) => (
               <tr
-                key={position.symbol}
+                key={`${position.symbol}-${i}`}
                 className={cn(
                   'animate-fade-in opacity-0 hover:bg-zinc-800/40 transition-colors',
                   `stagger-${Math.min(i + 1, 8)}`
