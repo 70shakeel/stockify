@@ -4,17 +4,16 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { TransactionInput } from '@/lib/psx/types'
 import { refreshStockPrice } from '@/actions/stocks'
-import { type Lot, addBuyLot, consumeSellLots } from '@/lib/lots'
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
 
 /**
  * Replay transactions for a symbol in chronological order to derive the
- * FIFO cost-per-share for a SELL of `sellQty` shares executed at `sellExecutedAt`.
+ * weighted-average cost-per-share for a SELL executed at `sellExecutedAt`.
  *
- * FIFO: sells consume the oldest purchased lots first.  When the position is
- * fully closed (open qty hits 0) a new lot starts so historical buys don't
- * skew a fresh position's avg cost.  Fees are excluded from cost basis.
+ * The avg cost of all buys in the current lot group stays fixed through
+ * partial sells — it only resets when the position is fully closed (net qty
+ * hits 0) and a new buy starts a fresh group. Fees are excluded from cost basis.
  *
  * Pass `excludeId` when updating an existing transaction so its old row is
  * not double-counted.
@@ -42,20 +41,30 @@ async function computeCostBasisForSell(
 
   const { data: txs } = await query
 
-  // Replay prior transactions to build the FIFO lot queue
-  const lots: Lot[] = []
+  // Replay prior transactions using weighted-average cost method.
+  // The avg cost of all buys in the current lot group stays fixed through
+  // partial sells — it only resets when the position is fully closed.
+  let totalBuyCost = 0
+  let totalBuyQty = 0
+  let netQty = 0
+
   for (const tx of (txs ?? [])) {
     const qty = Number(tx.quantity)
     const price = Number(tx.price_per_share)
     if (tx.type === 'BUY') {
-      addBuyLot(lots, qty, price)
+      if (netQty <= 0) {
+        totalBuyCost = 0
+        totalBuyQty = 0
+      }
+      totalBuyCost += qty * price
+      totalBuyQty += qty
+      netQty += qty
     } else if (tx.type === 'SELL') {
-      consumeSellLots(lots, qty)
+      netQty -= qty
     }
   }
 
-  // Cost basis for the target sell = FIFO cost of the lots being consumed
-  return consumeSellLots(lots, sellQty)
+  return totalBuyQty > 0 ? totalBuyCost / totalBuyQty : 0
 }
 
 export async function addTransaction(input: TransactionInput) {
@@ -321,20 +330,29 @@ export async function getTransactions(symbol?: string) {
       return dateDiff !== 0 ? dateDiff : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     })
 
-    // FIFO lot queue: oldest shares are consumed first by sells.
-    // Always recalculate cost_basis so stale stored values are corrected in-memory.
-    const lots: Lot[] = []
+    // Weighted-average cost: avg cost of all buys in the current lot group
+    // stays fixed through partial sells — only resets on full position close.
+    let totalBuyCost = 0
+    let totalBuyQty = 0
+    let netQty = 0
 
     for (const tx of chrono) {
       const qty = Number(tx.quantity)
       const price = Number(tx.price_per_share)
 
       if (tx.type === 'BUY') {
-        addBuyLot(lots, qty, price)
+        if (netQty <= 0) {
+          totalBuyCost = 0
+          totalBuyQty = 0
+        }
+        totalBuyCost += qty * price
+        totalBuyQty += qty
+        netQty += qty
       } else if (tx.type === 'SELL') {
-        tx.cost_basis = consumeSellLots(lots, qty)
+        tx.cost_basis = totalBuyQty > 0 ? totalBuyCost / totalBuyQty : 0
+        netQty -= qty
       }
-      // DIVIDEND rows don't affect lots
+      // DIVIDEND rows don't affect cost basis
     }
   }
 

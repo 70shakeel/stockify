@@ -2,7 +2,6 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { PortfolioHolding, PortfolioPosition, PortfolioSummaryData } from '@/lib/psx/types'
-import { type Lot, addBuyLot, consumeSellLots, lotsAvgCost, lotsTotalCost } from '@/lib/lots'
 
 import { refreshStockPrice } from '@/actions/stocks'
 
@@ -14,11 +13,11 @@ function toFiniteNumber(value: number) {
 
 /**
  * Replay transactions for each symbol in chronological order and derive
- * FIFO `cost_basis` for every SELL row.
+ * weighted-average `cost_basis` for every SELL row.
  *
- * FIFO: sells consume the oldest purchased lots first.  When the position is
- * fully closed (open qty hits 0) a new lot starts so historical buys don't
- * skew a fresh position's avg cost.  Fees are excluded from cost basis.
+ * The avg cost of all buys in the current lot group stays fixed through
+ * partial sells — it only resets when the position is fully closed.
+ * Fees are excluded from cost basis.
  *
  * Always overwrites any stored value so stale DB entries (e.g. from backdated
  * BUYs inserted after the SELL) are corrected in-memory.
@@ -50,18 +49,27 @@ function enrichWithCostBasis<T extends {
       return ca - cb
     })
 
-    const lots: Lot[] = []
+    let totalBuyCost = 0
+    let totalBuyQty = 0
+    let netQty = 0
 
     for (const tx of chrono) {
       const qty = Number(tx.quantity)
       const price = Number(tx.price_per_share)
 
       if (tx.type === 'BUY') {
-        addBuyLot(lots, qty, price)
+        if (netQty <= 0) {
+          totalBuyCost = 0
+          totalBuyQty = 0
+        }
+        totalBuyCost += qty * price
+        totalBuyQty += qty
+        netQty += qty
       } else if (tx.type === 'SELL') {
-        tx.cost_basis = consumeSellLots(lots, qty)
+        tx.cost_basis = totalBuyQty > 0 ? totalBuyCost / totalBuyQty : 0
+        netQty -= qty
       }
-      // DIVIDEND rows don't affect lots
+      // DIVIDEND rows don't affect cost basis
     }
   }
 
@@ -385,16 +393,14 @@ function buildPortfolioPositions(
   }>,
   stockMap: Map<string, { symbol: string; name: string; last_price: number | string | null }>,
 ): PortfolioPosition[] {
-  // Extend PortfolioPosition with internal tracking fields
-  type PositionWithLots = PortfolioPosition & {
-    lots: Lot[]
+  type PositionAccum = PortfolioPosition & {
     // Weighted-average cost tracking (price-only, no fees)
     buy_price_cost: number  // sum of (qty × price) for all buys in current lot group
     buy_price_qty: number   // sum of qty for all buys in current lot group
     total_dividends: number
   }
 
-  const positions = new Map<string, PositionWithLots>()
+  const positions = new Map<string, PositionAccum>()
 
   for (const tx of transactions) {
     const stock = stockMap.get(tx.symbol)
@@ -425,7 +431,6 @@ function buildPortfolioPositions(
         total_gain_loss_percent: 0,
         total_fees: 0,
         status: 'CLOSED',
-        lots: [],
         buy_price_cost: 0,
         buy_price_qty: 0,
         total_dividends: 0,
@@ -438,11 +443,6 @@ function buildPortfolioPositions(
     position.total_fees += fees
 
     if (tx.type === 'BUY') {
-      // addBuyLot handles lot-reset when position was fully closed
-      addBuyLot(position.lots, quantity, pricePerShare)
-
-      // If the position was fully closed before this buy, reset the
-      // weighted-average accumulators (fresh lot group).
       if (position.open_quantity <= 0) {
         position.buy_price_cost = 0
         position.buy_price_qty = 0
@@ -462,10 +462,12 @@ function buildPortfolioPositions(
       position.total_sale_value += quantity * pricePerShare
       position.realized_proceeds += sellProceeds
 
-      // FIFO: consume oldest lots and get cost basis (fees excluded, price only)
+      // Weighted-average cost: use the fixed avg of all buys in the lot group
       const sellQuantity = Math.min(quantity, position.open_quantity)
-      const fifoAvgCost = consumeSellLots(position.lots, sellQuantity)
-      const soldCostBasis = fifoAvgCost * sellQuantity
+      const weightedAvgCost = position.buy_price_qty > 0
+        ? position.buy_price_cost / position.buy_price_qty
+        : 0
+      const soldCostBasis = weightedAvgCost * sellQuantity
 
       const grossPnl = sellProceeds - soldCostBasis
       const tax = grossPnl > 0 ? grossPnl * CAPITAL_GAINS_TAX_RATE : 0
@@ -473,15 +475,13 @@ function buildPortfolioPositions(
       position.realized_gain_loss += grossPnl - tax
       position.open_quantity -= sellQuantity
       position.invested_amount -= soldCostBasis
-      // NOTE: buy_price_cost and buy_price_qty are NOT changed on sell
-      // This is what keeps avg cost fixed on partial sells
     } else if (tx.type === 'DIVIDEND') {
       position.total_dividends += pricePerShare // total dividend amount
     }
   }
 
   return [...positions.values()]
-    .map(({ lots, buy_price_cost, buy_price_qty, total_dividends, ...position }) => {
+    .map(({ buy_price_cost, buy_price_qty, total_dividends, ...position }) => {
       // Weighted-average cost of all buys in the current lot group (fees excluded).
       // This value does NOT change when partial sells happen — only resets when
       // the position is fully closed and a new buy starts a fresh lot group.
