@@ -206,6 +206,16 @@ export async function getPortfolioSummary(): Promise<{
     return { data: null, error: investmentsError.message }
   }
 
+  const { data: profitWithdrawals } = await supabase
+    .from('profit_withdrawals')
+    .select('amount')
+    .eq('user_id', user.id)
+
+  const totalProfitWithdrawn = (profitWithdrawals ?? []).reduce(
+    (sum, row) => sum + Number(row.amount),
+    0
+  )
+
   const totalAddedFunds = investmentRows.reduce((sum, entry) => {
     return entry.type === 'ADD' ? sum + Number(entry.amount) : sum
   }, 0)
@@ -249,9 +259,10 @@ export async function getPortfolioSummary(): Promise<{
     }
   }
 
-  const investmentAvailable = totalAddedFunds - totalWithdrawnFunds - totalBuyValue + totalSellValue
-
   if (!holdings || holdings.length === 0) {
+    // No open positions: invested=0, currentValue=0
+    const totalPortfolioValue = totalAddedFunds - totalWithdrawnFunds + realizedGainLoss - totalProfitWithdrawn + totalDividends
+    const investmentAvailable = totalPortfolioValue // nothing locked in stocks
     return {
       data: {
         totalInvested: 0,
@@ -268,6 +279,8 @@ export async function getPortfolioSummary(): Promise<{
         totalWithdrawnFunds,
         totalTaxPaid,
         totalDividends,
+        totalProfitWithdrawn,
+        totalPortfolioValue,
       },
       error: null,
     }
@@ -295,23 +308,29 @@ export async function getPortfolioSummary(): Promise<{
   const potentialGainLoss = currentValue - totalInvested
   const totalPNL = potentialGainLoss + realizedGainLoss + totalDividends
   const totalGainLossPercent = totalInvested > 0 ? (potentialGainLoss / totalInvested) * 100 : 0
+  // Total portfolio = initial investment + realized profit - profit withdrawn + dividends - invested (at cost) + current market value
+  const totalPortfolioValue = totalAddedFunds - totalWithdrawnFunds + realizedGainLoss - totalProfitWithdrawn + totalDividends - totalInvested + currentValue
+  // Cash available = what's liquid = total portfolio minus what's locked in stocks at cost
+  const investmentAvailableCalc = totalPortfolioValue - totalInvested
 
   return {
     data: {
       totalInvested,
       currentValue,
-      totalGainLoss: totalPNL, // Overall P&L
+      totalGainLoss: totalPNL,
       totalGainLossPercent: parseFloat(totalGainLossPercent.toFixed(2)),
       totalFees,
       holdingsCount: activeHoldings.length,
       realizedGainLoss,
       potentialGainLoss,
       totalPNL,
-      investmentAvailable,
+      investmentAvailable: investmentAvailableCalc,
       totalAddedFunds,
       totalWithdrawnFunds,
       totalTaxPaid,
       totalDividends,
+      totalProfitWithdrawn,
+      totalPortfolioValue,
     },
     error: null,
   }

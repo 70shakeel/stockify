@@ -148,4 +148,25 @@ export interface PortfolioSummaryData {
   totalWithdrawnFunds: number
   totalTaxPaid: number
   totalDividends: number
+  totalProfitWithdrawn: number
+  totalPortfolioValue: number
+}
+
+export interface ProfitWithdrawal {
+  id: string
+  user_id: string
+  partner_id: string
+  partner_name?: string
+  partner_color?: string
+  amount: number
+  notes: string | null
+  withdrawn_at: string
+  created_at: string
+}
+
+export interface ProfitWithdrawalInput {
+  partner_id: string
+  amount: number
+  notes?: string
+  withdrawn_at?: string
 }

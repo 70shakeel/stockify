@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPartners } from '@/actions/partners'
 import { getPortfolioSummary } from '@/actions/portfolio'
+import { getProfitWithdrawals } from '@/actions/profitWithdrawals'
 import { ProfitSplitPanel } from '@/components/partners/ProfitSplitPanel'
 
 export const metadata = {
@@ -16,9 +17,10 @@ export default async function ProfitSplitPage() {
     redirect('/auth/login')
   }
 
-  const [partnersResult, summaryResult] = await Promise.all([
+  const [partnersResult, summaryResult, withdrawalsResult] = await Promise.all([
     getPartners(),
     getPortfolioSummary(),
+    getProfitWithdrawals(),
   ])
 
   return (
@@ -26,6 +28,7 @@ export default async function ProfitSplitPage() {
       <ProfitSplitPanel
         initialPartners={partnersResult.data}
         summary={summaryResult.data}
+        initialWithdrawals={withdrawalsResult.data}
       />
     </div>
   )

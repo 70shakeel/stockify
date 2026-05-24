@@ -11,6 +11,8 @@ import {
   Landmark,
   ShieldAlert,
   DollarSign,
+  ArrowUpRight,
+  Globe,
 } from 'lucide-react'
 
 interface PortfolioSummaryProps {
@@ -20,6 +22,14 @@ interface PortfolioSummaryProps {
 export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
   const stats = [
     {
+      label: 'Total Portfolio',
+      value: formatCurrencyNoDecimals(summary.totalPortfolioValue),
+      icon: Globe,
+      color: 'text-emerald-400',
+      bgColor: 'bg-emerald-500/10',
+      glow: 'accent' as const,
+    },
+    {
       label: 'Cash Available',
       value: formatCurrencyNoDecimals(summary.investmentAvailable),
       icon: Wallet,
@@ -27,14 +37,14 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
       bgColor: 'bg-blue-500/10',
     },
     {
-      label: 'Funds Added',
-      value: formatCurrencyNoDecimals(summary.totalAddedFunds),
+      label: 'Invested Amount',
+      value: formatCurrencyNoDecimals(summary.totalInvested),
       icon: Landmark,
       color: 'text-amber-400',
       bgColor: 'bg-amber-500/10',
     },
     {
-      label: 'Current Value',
+      label: 'Stock Value',
       value: formatCurrencyNoDecimals(summary.currentValue),
       icon: PiggyBank,
       color: 'text-purple-400',
@@ -48,18 +58,18 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
       bgColor: summary.realizedGainLoss >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10',
     },
     {
-      label: 'Tax Paid (15%)',
-      value: formatCurrencyNoDecimals(summary.totalTaxPaid),
-      icon: ShieldAlert,
-      color: 'text-amber-400',
-      bgColor: 'bg-amber-500/10',
-    },
-    {
       label: 'Dividends',
       value: formatCurrencyNoDecimals(summary.totalDividends),
       icon: DollarSign,
-      color: getChangeColor(summary.totalDividends),
+      color: summary.totalDividends > 0 ? 'text-amber-400' : 'text-zinc-500',
       bgColor: summary.totalDividends > 0 ? 'bg-amber-500/10' : 'bg-zinc-500/10',
+    },
+    {
+      label: 'Profit Withdrawn',
+      value: formatCurrencyNoDecimals(summary.totalProfitWithdrawn),
+      icon: ArrowUpRight,
+      color: summary.totalProfitWithdrawn > 0 ? 'text-red-400' : 'text-zinc-500',
+      bgColor: summary.totalProfitWithdrawn > 0 ? 'bg-red-500/10' : 'bg-zinc-500/10',
     },
     {
       label: 'Potential P&L',
@@ -74,11 +84,7 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
       value: formatCurrencyNoDecimals(summary.totalPNL),
       icon: TrendingUp,
       color: getChangeColor(summary.totalPNL),
-      bgColor:
-        summary.totalPNL >= 0
-          ? 'bg-emerald-500/10'
-          : 'bg-red-500/10',
-      glow: summary.totalPNL >= 0 ? 'accent' as const : 'danger' as const,
+      bgColor: summary.totalPNL >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10',
     },
     {
       label: 'Holdings',
@@ -90,7 +96,7 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
   ]
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-5 gap-3">
       {stats.map((stat, i) => {
         const Icon = stat.icon
         return (

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown, DollarSign } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown, DollarSign, ArrowUpRight } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -9,7 +9,8 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { cn, formatCurrency, getChangeColor } from '@/lib/utils'
 import { addPartner, updatePartner, deletePartner } from '@/actions/partners'
-import type { Partner, PartnerInput, PortfolioSummaryData } from '@/lib/psx/types'
+import { addProfitWithdrawal, deleteProfitWithdrawal } from '@/actions/profitWithdrawals'
+import type { Partner, PartnerInput, PortfolioSummaryData, ProfitWithdrawal } from '@/lib/psx/types'
 
 const PARTNER_COLORS = [
   '#10b981', // emerald
@@ -41,16 +42,27 @@ const emptyForm: PartnerFormData = {
 interface ProfitSplitPanelProps {
   initialPartners: Partner[]
   summary: PortfolioSummaryData | null
+  initialWithdrawals: ProfitWithdrawal[]
 }
 
-export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelProps) {
+export function ProfitSplitPanel({ initialPartners, summary, initialWithdrawals }: ProfitSplitPanelProps) {
   const [partners, setPartners] = useState<Partner[]>(initialPartners)
+  const [withdrawals, setWithdrawals] = useState<ProfitWithdrawal[]>(initialWithdrawals)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingPartner, setEditingPartner] = useState<Partner | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [form, setForm] = useState<PartnerFormData>(emptyForm)
   const [formError, setFormError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  // Withdrawal modal state
+  const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false)
+  const [withdrawalPartnerId, setWithdrawalPartnerId] = useState<string | null>(null)
+  const [withdrawalAmount, setWithdrawalAmount] = useState('')
+  const [withdrawalDate, setWithdrawalDate] = useState(new Date().toISOString().split('T')[0])
+  const [withdrawalNotes, setWithdrawalNotes] = useState('')
+  const [withdrawalError, setWithdrawalError] = useState<string | null>(null)
+  const [isDeletingWithdrawal, setIsDeletingWithdrawal] = useState<string | null>(null)
 
   const totalPercent = partners.reduce((sum, p) => sum + Number(p.percentage), 0)
   const remaining = 100 - totalPercent
@@ -121,6 +133,56 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
         setPartners(prev => prev.filter(p => p.id !== id))
         setDeleteConfirmId(null)
       }
+    })
+  }
+
+  function openWithdrawalModal(partnerId: string) {
+    setWithdrawalPartnerId(partnerId)
+    setWithdrawalAmount('')
+    setWithdrawalDate(new Date().toISOString().split('T')[0])
+    setWithdrawalNotes('')
+    setWithdrawalError(null)
+    setIsWithdrawalModalOpen(true)
+  }
+
+  function closeWithdrawalModal() {
+    setIsWithdrawalModalOpen(false)
+    setWithdrawalPartnerId(null)
+    setWithdrawalError(null)
+  }
+
+  function handleWithdrawalSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const amt = parseFloat(withdrawalAmount)
+    if (!withdrawalPartnerId) return
+    if (isNaN(amt) || amt <= 0) { setWithdrawalError('Amount must be greater than 0'); return }
+
+    startTransition(async () => {
+      const { data, error } = await addProfitWithdrawal({
+        partner_id: withdrawalPartnerId,
+        amount: amt,
+        notes: withdrawalNotes || undefined,
+        withdrawn_at: new Date(withdrawalDate).toISOString(),
+      })
+      if (error) { setWithdrawalError(error); return }
+      if (data) {
+        const partner = partners.find(p => p.id === withdrawalPartnerId)
+        setWithdrawals(prev => [
+          { ...data, partner_name: partner?.name, partner_color: partner?.color },
+          ...prev,
+        ])
+      }
+      closeWithdrawalModal()
+    })
+  }
+
+  function handleDeleteWithdrawal(id: string) {
+    if (!confirm('Delete this profit withdrawal?')) return
+    setIsDeletingWithdrawal(id)
+    startTransition(async () => {
+      const { error } = await deleteProfitWithdrawal(id)
+      if (!error) setWithdrawals(prev => prev.filter(w => w.id !== id))
+      setIsDeletingWithdrawal(null)
     })
   }
 
@@ -305,6 +367,10 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
                     const dividendShare = (totalDividends * Number(partner.percentage)) / 100
                     const isConfirmingDelete = deleteConfirmId === partner.id
 
+                    const partnerWithdrawals = withdrawals.filter(w => w.partner_id === partner.id)
+                    const withdrawnForPartner = partnerWithdrawals.reduce((s, w) => s + Number(w.amount), 0)
+                    const netShare = share - withdrawnForPartner
+
                     return (
                       <div key={partner.id} className="px-5 py-4">
                         <div className="flex items-start justify-between gap-4">
@@ -353,6 +419,13 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
                             ) : (
                               <>
                                 <button
+                                  onClick={() => openWithdrawalModal(partner.id)}
+                                  className="p-1.5 rounded-lg text-zinc-500 hover:text-amber-400 hover:bg-zinc-800 transition-colors cursor-pointer"
+                                  title="Withdraw profit"
+                                >
+                                  <ArrowUpRight className="w-3.5 h-3.5" />
+                                </button>
+                                <button
                                   onClick={() => openEdit(partner)}
                                   className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors cursor-pointer"
                                   title="Edit partner"
@@ -372,7 +445,7 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
                         </div>
 
                         {/* Profit breakdown */}
-                        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                           <div className="bg-zinc-800/50 rounded-lg px-3 py-2">
                             <p className="text-xs text-zinc-500 mb-0.5">Total P&L Share</p>
                             <p className={cn('text-sm font-semibold', getChangeColor(share))}>
@@ -403,7 +476,54 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
                               {unrealizedShare >= 0 ? '+' : ''}{formatCurrency(unrealizedShare)}
                             </p>
                           </div>
+                          <div className="bg-zinc-800/50 rounded-lg px-3 py-2">
+                            <p className="text-xs text-zinc-500 mb-0.5 flex items-center gap-1">
+                              <ArrowUpRight className="w-3 h-3 text-red-400" /> Withdrawn
+                            </p>
+                            <p className={cn('text-sm font-medium', withdrawnForPartner > 0 ? 'text-red-400' : 'text-zinc-500')}>
+                              {withdrawnForPartner > 0 ? '-' : ''}{formatCurrency(withdrawnForPartner)}
+                            </p>
+                          </div>
                         </div>
+
+                        {/* Net balance */}
+                        <div className="mt-2 flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-900/60 border border-zinc-800">
+                          <span className="text-xs text-zinc-500">Net balance (after withdrawals)</span>
+                          <span className={cn('text-sm font-semibold', getChangeColor(netShare))}>
+                            {netShare >= 0 ? '+' : ''}{formatCurrency(netShare)}
+                          </span>
+                        </div>
+
+                        {/* Withdrawal history for this partner */}
+                        {partnerWithdrawals.length > 0 && (
+                          <div className="mt-3 space-y-1.5">
+                            <p className="text-xs text-zinc-600 uppercase tracking-wide">Withdrawal history</p>
+                            {partnerWithdrawals.map(w => (
+                              <div
+                                key={w.id}
+                                className={cn(
+                                  'flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-zinc-900/50 border border-zinc-800/60',
+                                  isDeletingWithdrawal === w.id && 'opacity-50 pointer-events-none'
+                                )}
+                              >
+                                <span className="text-zinc-500">
+                                  {new Date(w.withdrawn_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  {w.notes && <span className="ml-2 text-zinc-600">— {w.notes}</span>}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-red-400 font-medium">-{formatCurrency(w.amount)}</span>
+                                  <button
+                                    onClick={() => handleDeleteWithdrawal(w.id)}
+                                    className="text-zinc-600 hover:text-red-400 transition-colors cursor-pointer"
+                                    title="Delete withdrawal"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -423,6 +543,86 @@ export function ProfitSplitPanel({ initialPartners, summary }: ProfitSplitPanelP
           )}
         </div>
       </div>
+
+      {/* Withdraw Profit Modal */}
+      <Modal
+        isOpen={isWithdrawalModalOpen}
+        onClose={closeWithdrawalModal}
+        title="Withdraw Profit"
+        size="sm"
+      >
+        <form onSubmit={handleWithdrawalSubmit} className="space-y-4">
+          {withdrawalPartnerId && (() => {
+            const partner = partners.find(p => p.id === withdrawalPartnerId)
+            const partnerShare = ((profit * Number(partner?.percentage ?? 0)) / 100)
+            const alreadyWithdrawn = withdrawals
+              .filter(w => w.partner_id === withdrawalPartnerId)
+              .reduce((s, w) => s + Number(w.amount), 0)
+            const available = partnerShare - alreadyWithdrawn
+            return (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-zinc-800/60">
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs shrink-0"
+                  style={{ backgroundColor: partner?.color }}
+                >
+                  {partner?.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="text-sm">
+                  <p className="font-medium text-zinc-200">{partner?.name}</p>
+                  <p className="text-zinc-500 text-xs">
+                    Available: <span className={cn('font-medium', getChangeColor(available))}>{formatCurrency(available)}</span>
+                    <span className="mx-1.5 text-zinc-700">·</span>
+                    Total share: {formatCurrency(partnerShare)}
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
+
+          <Input
+            label="Amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder="Enter withdrawal amount"
+            value={withdrawalAmount}
+            onChange={e => setWithdrawalAmount(e.target.value)}
+            required
+          />
+
+          <Input
+            label="Date"
+            type="date"
+            value={withdrawalDate}
+            max={new Date().toISOString().split('T')[0]}
+            onChange={e => setWithdrawalDate(e.target.value)}
+            required
+          />
+
+          <Input
+            label="Notes (optional)"
+            placeholder="e.g. Q1 profit distribution"
+            value={withdrawalNotes}
+            onChange={e => setWithdrawalNotes(e.target.value)}
+          />
+
+          {withdrawalError && (
+            <p className="text-sm text-red-400 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              {withdrawalError}
+            </p>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={closeWithdrawalModal}>
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1" isLoading={isPending}>
+              Record Withdrawal
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Add / Edit Modal */}
       <Modal
