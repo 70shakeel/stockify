@@ -170,3 +170,50 @@ export interface ProfitWithdrawalInput {
   notes?: string
   withdrawn_at?: string
 }
+
+export interface Portfolio {
+  id: string
+  user_id: string
+  name: string
+  description: string | null
+  color: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PortfolioInput {
+  name: string
+  description?: string
+  color?: string
+}
+
+export interface PartnerInvitation {
+  id: string
+  portfolio_id: string
+  inviter_user_id: string
+  invited_email: string
+  percentage: number
+  color: string
+  notes: string | null
+  status: 'pending' | 'accepted' | 'declined'
+  token: string
+  expires_at: string
+  created_at: string
+  accepted_at: string | null
+}
+
+export interface PortfolioMember {
+  portfolio_id: string
+  portfolio_name: string
+  partner_id: string | null
+  name: string
+  email: string
+  percentage: number
+  color: string
+  notes: string | null
+  partner_user_id: string | null
+  status: 'accepted' | 'pending' | 'declined'
+  created_at: string
+  expires_at: string | null
+  invitation_token: string | null
+}

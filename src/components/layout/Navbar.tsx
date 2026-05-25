@@ -12,6 +12,7 @@ import {
   LogOut,
   User,
   PieChart,
+  Briefcase,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
@@ -25,6 +26,7 @@ const navItems = [
   { href: '/portfolio', label: 'Portfolio', icon: LineChart },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/profit-split', label: 'Profit Split', icon: PieChart },
+  { href: '/portfolios', label: 'Portfolios', icon: Briefcase },
 ]
 
 export function Navbar() {
