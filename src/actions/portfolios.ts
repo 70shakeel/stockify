@@ -53,12 +53,15 @@ export async function getSharedPortfolios(): Promise<{
   const result = (partnerRows ?? []).map((row: {
     user_id: string
     percentage: number
-    portfolios: Portfolio | null
-  }) => ({
-    ...(row.portfolios as Portfolio),
-    owner_name: profileMap.get(row.user_id) ?? 'Portfolio Owner',
-    percentage: Number(row.percentage),
-  }))
+    portfolios: Portfolio[] | Portfolio | null
+  }) => {
+    const p = Array.isArray(row.portfolios) ? row.portfolios[0] : row.portfolios
+    return {
+      ...(p as Portfolio),
+      owner_name: profileMap.get(row.user_id) ?? 'Portfolio Owner',
+      percentage: Number(row.percentage),
+    }
+  })
 
   return { data: result, error: null }
 }
