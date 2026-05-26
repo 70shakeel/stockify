@@ -32,20 +32,31 @@ export async function getSharedPortfolios(): Promise<{
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { data: [], error: 'Not authenticated' }
 
-  const { data, error } = await supabase
+  // Fetch partner rows where I am the invited partner
+  const { data: partnerRows, error: partnerError } = await supabase
     .from('partners')
-    .select('percentage, portfolios(*), profiles(full_name)')
+    .select('user_id, percentage, portfolios(*)')
     .eq('partner_user_id', user.id)
 
-  if (error) return { data: [], error: error.message }
+  if (partnerError) return { data: [], error: partnerError.message }
+  if (!partnerRows || partnerRows.length === 0) return { data: [], error: null }
 
-  const result = (data ?? []).map((row: {
+  // Fetch owner names separately (profiles of the portfolio owners)
+  const ownerIds = [...new Set(partnerRows.map((r: { user_id: string }) => r.user_id))]
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', ownerIds)
+
+  const profileMap = new Map((profiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
+
+  const result = (partnerRows ?? []).map((row: {
+    user_id: string
     percentage: number
     portfolios: Portfolio | null
-    profiles: { full_name: string | null } | null
   }) => ({
     ...(row.portfolios as Portfolio),
-    owner_name: row.profiles?.full_name ?? 'Portfolio Owner',
+    owner_name: profileMap.get(row.user_id) ?? 'Portfolio Owner',
     percentage: Number(row.percentage),
   }))
 
