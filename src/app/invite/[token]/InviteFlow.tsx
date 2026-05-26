@@ -112,7 +112,7 @@ export function InviteFlow({ token }: { token: string }) {
     setAuthError(null)
     if (password.length < 6) { setAuthError('Password must be at least 6 characters'); return }
     const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -121,6 +121,14 @@ export function InviteFlow({ token }: { token: string }) {
       },
     })
     if (error) { setAuthError(error.message); return }
+
+    // identities.length === 0 means the email is already registered
+    if (data.user?.identities?.length === 0) {
+      setAuthMode('login')
+      setAuthError('This email already has an account. Please sign in instead.')
+      return
+    }
+
     setSignupSuccess(true)
   }
 
