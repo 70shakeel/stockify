@@ -558,22 +558,33 @@ BEGIN
   SELECT COALESCE(full_name, v_email) INTO v_name
   FROM profiles WHERE id = auth.uid();
 
-  INSERT INTO partners (
-    user_id, portfolio_id, name, percentage, color, notes,
-    partner_user_id, email
-  ) VALUES (
-    v_inv.inviter_user_id,
-    v_inv.portfolio_id,
-    v_name,
-    v_inv.percentage,
-    v_inv.color,
-    v_inv.notes,
-    auth.uid(),
-    v_email
-  )
-  ON CONFLICT (portfolio_id, partner_user_id)
-  DO UPDATE SET percentage = EXCLUDED.percentage, color = EXCLUDED.color
-  RETURNING id INTO v_pid;
+  -- Check if a partners row already exists for this (portfolio, user)
+  SELECT id INTO v_pid
+  FROM partners
+  WHERE portfolio_id    = v_inv.portfolio_id
+    AND partner_user_id = auth.uid();
+
+  IF FOUND THEN
+    UPDATE partners
+    SET percentage = v_inv.percentage,
+        color      = v_inv.color
+    WHERE id = v_pid;
+  ELSE
+    INSERT INTO partners (
+      user_id, portfolio_id, name, percentage, color, notes,
+      partner_user_id, email
+    ) VALUES (
+      v_inv.inviter_user_id,
+      v_inv.portfolio_id,
+      v_name,
+      v_inv.percentage,
+      v_inv.color,
+      v_inv.notes,
+      auth.uid(),
+      v_email
+    )
+    RETURNING id INTO v_pid;
+  END IF;
 
   UPDATE partner_invitations
   SET status = 'accepted', accepted_at = now()

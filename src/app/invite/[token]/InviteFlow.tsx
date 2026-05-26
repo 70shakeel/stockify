@@ -188,7 +188,7 @@ export function InviteFlow({ token }: { token: string }) {
         <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
         <h1 className="text-xl font-bold text-zinc-100">Already Accepted</h1>
         <p className="text-sm text-zinc-500">You have already accepted this invitation.</p>
-        <Button className="w-full" onClick={() => router.push('/profit-split')}>Go to Profit Split</Button>
+        <Button className="w-full" onClick={() => router.push('/')}>Go to Dashboard</Button>
       </Card>
     )
   }
@@ -380,8 +380,8 @@ export function InviteFlow({ token }: { token: string }) {
         You now have read-only access to <strong className="text-zinc-300">{invite?.portfolio_name}</strong> with a{' '}
         <strong className="text-emerald-400">{Number(invite?.percentage).toFixed(1)}%</strong> profit share.
       </p>
-      <Button className="w-full" onClick={() => router.push('/profit-split')}>
-        View Profit Split
+      <Button className="w-full" onClick={() => router.push('/')}>
+        Go to Dashboard
       </Button>
     </Card>
   )
