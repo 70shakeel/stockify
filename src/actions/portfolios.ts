@@ -23,6 +23,35 @@ export async function getPortfolios(): Promise<{
   return { data: (data as Portfolio[]) ?? [], error: null }
 }
 
+// Portfolios the current user was invited to (partner_user_id = me)
+export async function getSharedPortfolios(): Promise<{
+  data: (Portfolio & { owner_name: string; percentage: number })[]
+  error: string | null
+}> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { data: [], error: 'Not authenticated' }
+
+  const { data, error } = await supabase
+    .from('partners')
+    .select('percentage, portfolios(*), profiles(full_name)')
+    .eq('partner_user_id', user.id)
+
+  if (error) return { data: [], error: error.message }
+
+  const result = (data ?? []).map((row: {
+    percentage: number
+    portfolios: Portfolio | null
+    profiles: { full_name: string | null } | null
+  }) => ({
+    ...(row.portfolios as Portfolio),
+    owner_name: row.profiles?.full_name ?? 'Portfolio Owner',
+    percentage: Number(row.percentage),
+  }))
+
+  return { data: result, error: null }
+}
+
 export async function createPortfolio(input: PortfolioInput): Promise<{
   data: Portfolio | null
   error: string | null

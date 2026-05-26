@@ -22,6 +22,8 @@ import {
 } from '@/actions/portfolios'
 import type { Portfolio, PortfolioInput, PortfolioMember } from '@/lib/psx/types'
 
+type SharedPortfolio = Portfolio & { owner_name: string; percentage: number }
+
 const PORTFOLIO_COLORS = [
   '#10b981', '#3b82f6', '#f59e0b', '#8b5cf6',
   '#ec4899', '#06b6d4', '#f97316', '#84cc16',
@@ -55,9 +57,10 @@ const emptyInvite: InviteFormData = {
 
 interface Props {
   initialPortfolios: Portfolio[]
+  sharedPortfolios: SharedPortfolio[]
 }
 
-export function PortfoliosPanel({ initialPortfolios }: Props) {
+export function PortfoliosPanel({ initialPortfolios, sharedPortfolios }: Props) {
   const [portfolios, setPortfolios] = useState<Portfolio[]>(initialPortfolios)
   const [members, setMembers] = useState<Record<string, PortfolioMember[]>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -479,6 +482,43 @@ export function PortfoliosPanel({ initialPortfolios }: Props) {
           )
         })}
       </div>
+
+      {/* Shared portfolios (read-only) */}
+      {sharedPortfolios.length > 0 && (
+        <div className={initialPortfolios.length > 0 ? 'mt-10 pt-8 border-t border-zinc-800' : ''}>
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-zinc-200">Shared With Me</h2>
+            <p className="text-sm text-zinc-500 mt-0.5">Portfolios you have been invited to view</p>
+          </div>
+          <div className="space-y-3">
+            {sharedPortfolios.map(portfolio => (
+              <Card key={portfolio.id} padding="none">
+                <div className="px-5 py-4 flex items-center gap-4">
+                  <div
+                    className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center"
+                    style={{ backgroundColor: portfolio.color + '20', border: `1px solid ${portfolio.color}40` }}
+                  >
+                    <Briefcase className="w-5 h-5" style={{ color: portfolio.color }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-zinc-100">{portfolio.name}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">Owned by {portfolio.owner_name}</p>
+                    {portfolio.description && (
+                      <p className="text-xs text-zinc-600 mt-0.5 truncate">{portfolio.description}</p>
+                    )}
+                  </div>
+                  <span
+                    className="text-sm font-semibold px-3 py-1 rounded-full shrink-0"
+                    style={{ backgroundColor: portfolio.color + '20', color: portfolio.color }}
+                  >
+                    {portfolio.percentage.toFixed(1)}% share
+                  </span>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Create / Edit Portfolio Modal */}
       <Modal

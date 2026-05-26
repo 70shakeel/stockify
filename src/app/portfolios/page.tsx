@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPortfolios } from '@/actions/portfolios'
+import { getPortfolios, getSharedPortfolios } from '@/actions/portfolios'
 import { PortfoliosPanel } from '@/components/portfolios/PortfoliosPanel'
 
 export const metadata = {
@@ -15,11 +15,17 @@ export default async function PortfoliosPage() {
     redirect('/auth/login')
   }
 
-  const { data: portfolios } = await getPortfolios()
+  const [{ data: portfolios }, { data: sharedPortfolios }] = await Promise.all([
+    getPortfolios(),
+    getSharedPortfolios(),
+  ])
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <PortfoliosPanel initialPortfolios={portfolios} />
+      <PortfoliosPanel
+        initialPortfolios={portfolios}
+        sharedPortfolios={sharedPortfolios ?? []}
+      />
     </div>
   )
 }
