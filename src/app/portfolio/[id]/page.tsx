@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPortfolioHoldingsById, getPortfolioSummaryById, getInvestmentsById, getPortfolioAccess } from '@/actions/portfolioById'
+import { getPortfolioHoldingsById, getPortfolioSummaryById, getInvestmentsById, getPortfolioPositionsById, getPortfolioAccess } from '@/actions/portfolioById'
 import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary'
 import { PortfolioTabs } from '@/components/dashboard/PortfolioTabs'
 import { Briefcase, ArrowLeft, Lock } from 'lucide-react'
@@ -26,10 +26,11 @@ export default async function PortfolioDetailPage({ params }: Props) {
 
   const portfolio = portfolioRow.data
 
-  const [summaryResult, holdingsResult, investmentsResult] = await Promise.all([
+  const [summaryResult, holdingsResult, investmentsResult, positionsResult] = await Promise.all([
     getPortfolioSummaryById(id),
     getPortfolioHoldingsById(id),
     getInvestmentsById(id),
+    getPortfolioPositionsById(id),
   ])
 
   return (
@@ -71,7 +72,7 @@ export default async function PortfolioDetailPage({ params }: Props) {
       {summaryResult.data && <PortfolioSummary summary={summaryResult.data} />}
 
       <PortfolioTabs
-        positions={[]}
+        positions={positionsResult.data ?? []}
         holdings={holdingsResult.data}
         investments={investmentsResult.data}
       />
