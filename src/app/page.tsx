@@ -16,9 +16,9 @@ import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary'
 import { PortfolioTabs } from '@/components/dashboard/PortfolioTabs'
 import { ProfitSplitSummary } from '@/components/dashboard/ProfitSplitSummary'
 import { PartnerProfitList } from '@/components/partners/PartnerProfitList'
-import { PortfolioSwitcher } from '@/components/dashboard/PortfolioSwitcher'
 import { PortfolioSelectScreen } from '@/components/dashboard/PortfolioSelectScreen'
 import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
+import { AddTransactionButton } from '@/components/dashboard/AddTransactionButton'
 import { RememberPortfolio } from '@/components/dashboard/RememberPortfolio'
 import { NewsFeed } from '@/components/news/NewsFeed'
 import { Card } from '@/components/ui/Card'
@@ -27,7 +27,7 @@ import { Badge } from '@/components/ui/Badge'
 import Link from 'next/link'
 import { cn, formatCurrency, getChangeColor } from '@/lib/utils'
 import {
-  TrendingUp, Plus, Shield, Zap, Globe, BarChart3, Lock, Briefcase,
+  TrendingUp, Plus, Shield, Zap, Globe, BarChart3, Lock,
 } from 'lucide-react'
 
 async function DashboardContent() {
@@ -104,11 +104,7 @@ async function DashboardContent() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <RefreshPricesButton portfolioId={activeId} />
-          <PortfolioSwitcher
-            activeId={activeId}
-            ownPortfolios={own}
-            sharedPortfolios={shared}
-          />
+          {access.isOwner && <AddTransactionButton />}
         </div>
       </div>
 
