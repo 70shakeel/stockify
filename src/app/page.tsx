@@ -19,6 +19,7 @@ import { PartnerProfitList } from '@/components/partners/PartnerProfitList'
 import { PortfolioSwitcher } from '@/components/dashboard/PortfolioSwitcher'
 import { PortfolioSelectScreen } from '@/components/dashboard/PortfolioSelectScreen'
 import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
+import { RememberPortfolio } from '@/components/dashboard/RememberPortfolio'
 import { NewsFeed } from '@/components/news/NewsFeed'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
@@ -80,6 +81,7 @@ async function DashboardContent() {
 
   return (
     <div className="space-y-8">
+      <RememberPortfolio portfolioId={activeId} />
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>

@@ -97,6 +97,20 @@ export async function addTransaction(input: TransactionInput) {
 
   const normalizedSymbol = input.symbol.toUpperCase().trim()
 
+  // Resolve portfolio_id — use the one from input, or fall back to the user's default portfolio
+  let portfolioId = input.portfolio_id ?? null
+  if (!portfolioId) {
+    const { data: defaultPortfolio } = await supabase
+      .from('portfolios')
+      .select('id')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single()
+    portfolioId = defaultPortfolio?.id ?? null
+  }
+  if (!portfolioId) return { error: 'No portfolio found. Please create a portfolio first.' }
+
   // DIVIDEND transactions: no share checks, no cost basis
   if (input.type === 'DIVIDEND') {
     // Ensure stock exists in DB cache
@@ -110,6 +124,7 @@ export async function addTransaction(input: TransactionInput) {
 
     const { data, error } = await supabase.from('transactions').insert({
       user_id: user.id,
+      portfolio_id: portfolioId,
       symbol: normalizedSymbol,
       type: 'DIVIDEND',
       quantity: 1,
@@ -139,7 +154,7 @@ export async function addTransaction(input: TransactionInput) {
     const { data: holdings } = await supabase
       .from('portfolio_holdings')
       .select('net_quantity')
-      .eq('user_id', user.id)
+      .eq('portfolio_id', portfolioId)
       .eq('symbol', normalizedSymbol)
       .single()
 
@@ -172,6 +187,7 @@ export async function addTransaction(input: TransactionInput) {
 
   const { data, error } = await supabase.from('transactions').insert({
     user_id: user.id,
+    portfolio_id: portfolioId,
     symbol: normalizedSymbol,
     type: input.type,
     quantity: input.quantity,

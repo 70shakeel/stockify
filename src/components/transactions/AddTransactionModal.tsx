@@ -27,6 +27,7 @@ export function AddTransactionModal() {
     transactionModalPrice,
     editingTransaction,
     closeTransactionModal,
+    activePortfolioId,
   } = useAppStore()
 
   const [type, setType] = useState<'BUY' | 'SELL' | 'DIVIDEND'>('BUY')
@@ -133,6 +134,7 @@ export function AddTransactionModal() {
       fees: isDividend ? 0 : calculatedFee,
       notes: notes || undefined,
       executed_at: new Date(date).toISOString(),
+      portfolio_id: activePortfolioId ?? undefined,
     }
 
     startTransition(async () => {

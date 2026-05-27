@@ -87,6 +87,7 @@ export interface TransactionInput {
   fees?: number
   notes?: string
   executed_at?: string
+  portfolio_id?: string
 }
 
 export interface InvestmentEntry {

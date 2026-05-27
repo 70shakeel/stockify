@@ -2,6 +2,10 @@ import { create } from 'zustand'
 import type { Transaction } from '@/lib/psx/types'
 
 interface AppState {
+  // Active portfolio
+  activePortfolioId: string | null
+  setActivePortfolioId: (id: string | null) => void
+
   // Modal state
   isTransactionModalOpen: boolean
   transactionModalSymbol: string | null
@@ -22,6 +26,10 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
+  // Active portfolio
+  activePortfolioId: null,
+  setActivePortfolioId: (id) => set({ activePortfolioId: id }),
+
   // Transaction Modal
   isTransactionModalOpen: false,
   transactionModalSymbol: null,
