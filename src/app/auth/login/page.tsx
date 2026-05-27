@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
-import { TrendingUp, Mail, Lock } from 'lucide-react'
+import { TrendingUp, Mail, Lock, KeyRound } from 'lucide-react'
 
 import { Suspense } from 'react'
 
@@ -67,15 +67,25 @@ function LoginForm() {
             required
           />
 
-          <Input
-            label="Password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            icon={<Lock className="w-4 h-4" />}
-            required
-          />
+          <div className="space-y-1">
+            <Input
+              label="Password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              icon={<Lock className="w-4 h-4" />}
+              required
+            />
+            <div className="flex justify-end">
+              <Link
+                href="/auth/forgot-password"
+                className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-emerald-400 transition-colors"
+              >
+                <KeyRound className="w-3 h-3" /> Forgot password?
+              </Link>
+            </div>
+          </div>
 
           {error && (
             <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">

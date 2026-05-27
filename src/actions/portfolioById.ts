@@ -1,7 +1,6 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { refreshStockPrice } from '@/actions/stocks'
 import type { PortfolioHolding, PortfolioSummaryData, PortfolioPosition, InvestmentEntry } from '@/lib/psx/types'
 
 const TAX_RATE = 0.15
@@ -141,24 +140,6 @@ export async function getPortfolioPositionsById(portfolioId: string): Promise<{
 
   const enriched = enrichCostBasis(txs)
   const symbols = [...new Set(enriched.map(t => t.symbol))]
-
-  // Refresh stale prices
-  const { data: stocksRaw } = await supabase
-    .from('stocks')
-    .select('symbol, name, last_price, last_updated')
-    .in('symbol', symbols)
-
-  const now = Date.now()
-  const STALE_MS = 15 * 60 * 1000
-  const stale = (stocksRaw ?? []).filter(s => {
-    if (Number(s.last_price) === 0) return true
-    if (!s.last_updated) return true
-    return now - new Date(s.last_updated).getTime() > STALE_MS
-  }).map(s => s.symbol)
-
-  if (stale.length > 0) {
-    await Promise.all(stale.map((sym: string) => refreshStockPrice(sym)))
-  }
 
   const { data: stocks } = await supabase
     .from('stocks')

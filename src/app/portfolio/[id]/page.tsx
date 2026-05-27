@@ -7,6 +7,7 @@ import { Briefcase, ArrowLeft, Lock } from 'lucide-react'
 import Link from 'next/link'
 import { cn, formatCurrency, getChangeColor } from '@/lib/utils'
 import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
+import { RememberPortfolio } from '@/components/dashboard/RememberPortfolio'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -36,6 +37,7 @@ export default async function PortfolioDetailPage({ params }: Props) {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <RememberPortfolio portfolioId={id} />
       {/* Back + header */}
       <div>
         <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors mb-4">
@@ -69,7 +71,7 @@ export default async function PortfolioDetailPage({ params }: Props) {
               )}
             </div>
           </div>
-          <RefreshPricesButton />
+          <RefreshPricesButton portfolioId={id} />
         </div>
       </div>
 

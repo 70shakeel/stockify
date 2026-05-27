@@ -1,8 +1,38 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import type { Partner, PartnerInput } from '@/lib/psx/types'
+
+export async function setLastViewedPortfolio(portfolioId: string) {
+  const cookieStore = await cookies()
+  cookieStore.set('last_portfolio_id', portfolioId, {
+    path: '/',
+    maxAge: 60 * 60 * 24 * 90, // 90 days
+    httpOnly: false,
+    sameSite: 'lax',
+  })
+}
+
+export async function getPartnersByPortfolioId(portfolioId: string): Promise<{
+  data: Partner[]
+  error: string | null
+}> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { data: [], error: 'Not authenticated' }
+
+  const { data, error } = await supabase
+    .from('partners')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('portfolio_id', portfolioId)
+    .order('created_at', { ascending: true })
+
+  if (error) return { data: [], error: error.message }
+  return { data: (data as Partner[]) ?? [], error: null }
+}
 
 export async function getPartners(): Promise<{
   data: Partner[]

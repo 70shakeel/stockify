@@ -4,16 +4,23 @@ import { Button } from '@/components/ui/Button'
 import { RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { refreshPortfolioPrices } from '@/actions/stocks'
 
-export function RefreshPricesButton() {
+interface Props {
+  portfolioId?: string
+}
+
+export function RefreshPricesButton({ portfolioId }: Props) {
   const router = useRouter()
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true)
+    if (portfolioId) {
+      await refreshPortfolioPrices(portfolioId)
+    }
     router.refresh()
-    // Give it a moment so the user sees the spinner
-    setTimeout(() => setIsRefreshing(false), 2000)
+    setIsRefreshing(false)
   }
 
   return (

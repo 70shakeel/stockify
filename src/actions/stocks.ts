@@ -179,6 +179,24 @@ export async function getStockBySymbol(symbol: string) {
 
 
 
+export async function refreshPortfolioPrices(portfolioId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const { data: holdings } = await supabase
+    .from('portfolio_holdings')
+    .select('symbol')
+    .eq('portfolio_id', portfolioId)
+    .gt('net_quantity', 0)
+
+  const symbols = [...new Set((holdings ?? []).map((h: { symbol: string }) => h.symbol))]
+  if (symbols.length === 0) return { error: null }
+
+  await Promise.all(symbols.map(sym => refreshStockPrice(sym)))
+  return { error: null }
+}
+
 export async function refreshStockPrice(symbol: string) {
   try {
     const supabase = await createClient()

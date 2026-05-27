@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio'
+import { unstable_cache } from 'next/cache'
 import type { StockData } from './types'
 
 // Rate limiter - simple in-memory throttle
@@ -96,15 +97,11 @@ export async function scrapeStockData(ticker: string): Promise<StockData | null>
   }
 }
 
-/**
- * Scrape PSX news headlines
- */
-export async function scrapePSXNews(): Promise<Array<{ title: string; url: string; date: string }>> {
+async function _fetchPSXNews(): Promise<Array<{ title: string; url: string; date: string }>> {
   try {
-    // Use Google News RSS as a reliable source
     const response = await fetch(
       'https://news.google.com/rss/search?q=Pakistan+Stock+Exchange+PSX&hl=en-PK&gl=PK&ceid=PK:en',
-      { next: { revalidate: 300 } } // Cache for 5 minutes
+      { cache: 'no-store' }
     )
 
     if (!response.ok) return []
@@ -114,7 +111,7 @@ export async function scrapePSXNews(): Promise<Array<{ title: string; url: strin
     const items: Array<{ title: string; url: string; date: string }> = []
 
     $('item').each((i, el) => {
-      if (i >= 10) return false // Limit to 10 items
+      if (i >= 10) return false
       items.push({
         title: $(el).find('title').text().trim(),
         url: $(el).find('link').text().trim(),
@@ -128,3 +125,9 @@ export async function scrapePSXNews(): Promise<Array<{ title: string; url: strin
     return []
   }
 }
+
+export const scrapePSXNews = unstable_cache(
+  _fetchPSXNews,
+  ['psx-news'],
+  { revalidate: 300 }
+)

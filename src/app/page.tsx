@@ -1,14 +1,29 @@
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
 import { getPortfolios, getSharedPortfolios } from '@/actions/portfolios'
+import { getPartnersByPortfolioId } from '@/actions/partners'
+import {
+  getPortfolioSummaryById,
+  getPortfolioHoldingsById,
+  getInvestmentsById,
+  getPortfolioPositionsById,
+  getPortfolioAccess,
+} from '@/actions/portfolioById'
+import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary'
+import { PortfolioTabs } from '@/components/dashboard/PortfolioTabs'
+import { ProfitSplitSummary } from '@/components/dashboard/ProfitSplitSummary'
+import { PortfolioSwitcher } from '@/components/dashboard/PortfolioSwitcher'
+import { PortfolioSelectScreen } from '@/components/dashboard/PortfolioSelectScreen'
+import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
 import { NewsFeed } from '@/components/news/NewsFeed'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
 import { Badge } from '@/components/ui/Badge'
 import Link from 'next/link'
+import { cn, formatCurrency, getChangeColor } from '@/lib/utils'
 import {
-  TrendingUp, Plus, ArrowRight, Shield, Zap, Globe,
-  BarChart3, Briefcase, Lock,
+  TrendingUp, Plus, Shield, Zap, Globe, BarChart3, Lock, Briefcase,
 } from 'lucide-react'
 
 async function DashboardContent() {
@@ -17,106 +32,89 @@ async function DashboardContent() {
 
   if (!user) return <HeroSection />
 
+  const cookieStore = await cookies()
+  const savedId = cookieStore.get('last_portfolio_id')?.value ?? null
+
   const [{ data: ownPortfolios }, { data: sharedPortfolios }] = await Promise.all([
     getPortfolios(),
     getSharedPortfolios(),
   ])
 
-  const hasAny = (ownPortfolios?.length ?? 0) > 0 || (sharedPortfolios?.length ?? 0) > 0
+  const own = ownPortfolios ?? []
+  const shared = sharedPortfolios ?? []
+  const allIds = [...own.map(p => p.id), ...shared.map(p => p.id)]
+
+  // Validate the saved id still belongs to the user
+  const activeId = savedId && allIds.includes(savedId) ? savedId : null
+
+  if (!activeId) {
+    return <PortfolioSelectScreen ownPortfolios={own} sharedPortfolios={shared} />
+  }
+
+  // Fetch full dashboard data for the active portfolio
+  const access = await getPortfolioAccess(activeId)
+
+  const [summaryResult, holdingsResult, investmentsResult, positionsResult] = await Promise.all([
+    getPortfolioSummaryById(activeId),
+    getPortfolioHoldingsById(activeId),
+    getInvestmentsById(activeId),
+    getPortfolioPositionsById(activeId),
+  ])
+
+  // Profit split — only for owner portfolios with partners
+  let profitSplitPartners: Awaited<ReturnType<typeof getPartnersByPortfolioId>>['data'] = []
+  if (access.isOwner) {
+    const { data } = await getPartnersByPortfolioId(activeId)
+    profitSplitPartners = data
+  }
+
+  const activePortfolio = own.find(p => p.id === activeId) ?? shared.find(p => p.id === activeId)
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">Dashboard</h1>
-          <p className="text-sm text-zinc-500 mt-1">Select a portfolio to view its details</p>
+          <h1 className="text-2xl font-bold text-zinc-100">{activePortfolio?.name ?? 'Dashboard'}</h1>
+          {access.isPartner && (
+            <p className="text-sm text-zinc-500 mt-0.5 flex items-center gap-1.5">
+              <Lock className="w-3 h-3" />
+              Owned by {access.ownerName ?? 'Portfolio Owner'} · Your share:{' '}
+              <span className={cn('font-semibold', getChangeColor(
+                summaryResult.data ? (summaryResult.data.totalPNL * (access.percentage ?? 0)) / 100 : 0
+              ))}>
+                {access.percentage?.toFixed(1)}%
+                {summaryResult.data && ` · ${formatCurrency((summaryResult.data.totalPNL * (access.percentage ?? 0)) / 100)}`}
+              </span>
+            </p>
+          )}
+          {activePortfolio?.description && (
+            <p className="text-sm text-zinc-500 mt-0.5">{activePortfolio.description}</p>
+          )}
         </div>
-        <Link
-          href="/portfolios"
-          className="flex items-center gap-2 px-4 py-2 rounded-lg gradient-accent text-white text-sm font-medium shadow-lg shadow-emerald-500/20 hover:opacity-90 transition-opacity"
-        >
-          <Plus className="w-4 h-4" /> New Portfolio
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <RefreshPricesButton portfolioId={activeId} />
+          <PortfolioSwitcher
+            activeId={activeId}
+            ownPortfolios={own}
+            sharedPortfolios={shared}
+          />
+        </div>
       </div>
 
-      {!hasAny && (
-        <Card className="flex flex-col items-center justify-center py-16 text-center">
-          <Briefcase className="w-12 h-12 text-zinc-700 mb-4" />
-          <h3 className="text-lg font-semibold text-zinc-300 mb-1">No Portfolios Yet</h3>
-          <p className="text-sm text-zinc-500 max-w-sm mb-5">
-            Create your first portfolio to start tracking your PSX investments.
-          </p>
-          <Link
-            href="/portfolios"
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl gradient-accent text-white text-sm font-semibold shadow-lg shadow-emerald-500/20 hover:opacity-90 transition-opacity"
-          >
-            <Plus className="w-4 h-4" /> Create Portfolio
-          </Link>
-        </Card>
-      )}
+      {/* Summary stats */}
+      {summaryResult.data && <PortfolioSummary summary={summaryResult.data} />}
 
-      {/* Your portfolios */}
-      {(ownPortfolios?.length ?? 0) > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wide">Your Portfolios</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {ownPortfolios!.map(p => (
-              <Link key={p.id} href={`/portfolio/${p.id}`}>
-                <Card hover className="h-full flex flex-col gap-3 cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: p.color + '20', border: `1px solid ${p.color}40` }}
-                    >
-                      <Briefcase className="w-5 h-5" style={{ color: p.color }} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-zinc-100 truncate">{p.name}</p>
-                      {p.description && <p className="text-xs text-zinc-500 truncate mt-0.5">{p.description}</p>}
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-zinc-600 shrink-0" />
-                  </div>
-                  <p className="text-xs text-zinc-600">
-                    Created {new Date(p.created_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </p>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Holdings / Positions / Investments tabs */}
+      <PortfolioTabs
+        positions={positionsResult.data ?? []}
+        holdings={holdingsResult.data ?? []}
+        investments={investmentsResult.data ?? []}
+      />
 
-      {/* Shared portfolios */}
-      {(sharedPortfolios?.length ?? 0) > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wide">Shared With Me</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {sharedPortfolios!.map(p => (
-              <Link key={p.id} href={`/portfolio/${p.id}`}>
-                <Card hover className="h-full flex flex-col gap-3 cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: p.color + '20', border: `1px solid ${p.color}40` }}
-                    >
-                      <Briefcase className="w-5 h-5" style={{ color: p.color }} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-zinc-100 truncate">{p.name}</p>
-                      <p className="text-xs text-zinc-500 mt-0.5">by {p.owner_name}</p>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-zinc-600 shrink-0" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-3 h-3 text-zinc-600" />
-                    <span className="text-xs text-zinc-500">Read-only · </span>
-                    <span className="text-xs font-semibold" style={{ color: p.color }}>{p.percentage.toFixed(1)}% share</span>
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </div>
+      {/* Profit split (owner only, if partners exist) */}
+      {summaryResult.data && profitSplitPartners.length > 0 && (
+        <ProfitSplitSummary partners={profitSplitPartners} summary={summaryResult.data} />
       )}
 
       <Suspense fallback={<Card className="py-12"><Spinner className="mx-auto" /></Card>}>
