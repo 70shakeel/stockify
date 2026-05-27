@@ -34,7 +34,7 @@ export async function getMyPartnerAccess(): Promise<{
   // Fetch partner records where I am the invited partner
   const { data: partnerRows, error: partnerError } = await supabase
     .from('partners')
-    .select('id, portfolio_id, percentage, color, notes, user_id, portfolios(name), profiles(full_name)')
+    .select('id, portfolio_id, percentage, color, notes, user_id, portfolios(name)')
     .eq('partner_user_id', user.id)
 
   if (partnerError) return { data: [], error: partnerError.message }
@@ -108,13 +108,18 @@ export async function getMyPartnerAccess(): Promise<{
     const withdrawn = (withdrawals ?? []).reduce((s, w) => s + Number(w.amount), 0)
 
     const portfolio = row.portfolios as unknown as { name: string } | null
-    const profile = row.profiles as unknown as { full_name: string | null } | null
+
+    const { data: ownerProfile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', row.user_id)
+      .single()
 
     results.push({
       partner_id: row.id,
       portfolio_id: portfolioId,
       portfolio_name: portfolio?.name ?? 'Portfolio',
-      owner_name: profile?.full_name ?? 'Portfolio Owner',
+      owner_name: ownerProfile?.full_name ?? 'Portfolio Owner',
       percentage,
       color: row.color,
       notes: row.notes,

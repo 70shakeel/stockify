@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { getPortfolios, getSharedPortfolios } from '@/actions/portfolios'
 import { getPartnersByPortfolioId } from '@/actions/partners'
+import { getMyPartnerAccess } from '@/actions/partnerView'
 import {
   getPortfolioSummaryById,
   getPortfolioHoldingsById,
@@ -13,6 +14,7 @@ import {
 import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary'
 import { PortfolioTabs } from '@/components/dashboard/PortfolioTabs'
 import { ProfitSplitSummary } from '@/components/dashboard/ProfitSplitSummary'
+import { PartnerAccessPanel } from '@/components/partners/PartnerAccessPanel'
 import { PortfolioSwitcher } from '@/components/dashboard/PortfolioSwitcher'
 import { PortfolioSelectScreen } from '@/components/dashboard/PortfolioSelectScreen'
 import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
@@ -61,11 +63,15 @@ async function DashboardContent() {
     getPortfolioPositionsById(activeId),
   ])
 
-  // Profit split — only for owner portfolios with partners
+  // Profit split data
   let profitSplitPartners: Awaited<ReturnType<typeof getPartnersByPortfolioId>>['data'] = []
+  let partnerAccessData: Awaited<ReturnType<typeof getMyPartnerAccess>>['data'] = []
   if (access.isOwner) {
     const { data } = await getPartnersByPortfolioId(activeId)
     profitSplitPartners = data
+  } else if (access.isPartner) {
+    const { data } = await getMyPartnerAccess()
+    partnerAccessData = data.filter(p => p.portfolio_id === activeId)
   }
 
   const activePortfolio = own.find(p => p.id === activeId) ?? shared.find(p => p.id === activeId)
@@ -112,9 +118,14 @@ async function DashboardContent() {
         investments={investmentsResult.data ?? []}
       />
 
-      {/* Profit split (owner only, if partners exist) */}
+      {/* Profit split — owner view */}
       {summaryResult.data && profitSplitPartners.length > 0 && (
         <ProfitSplitSummary partners={profitSplitPartners} summary={summaryResult.data} />
+      )}
+
+      {/* Profit split — partner (invited member) view */}
+      {partnerAccessData.length > 0 && (
+        <PartnerAccessPanel portfolios={partnerAccessData} />
       )}
 
       <Suspense fallback={<Card className="py-12"><Spinner className="mx-auto" /></Card>}>
