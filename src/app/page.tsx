@@ -104,7 +104,7 @@ async function DashboardContent() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <RefreshPricesButton portfolioId={activeId} />
-          {access.isOwner && <AddTransactionButton />}
+          <AddTransactionButton />
         </div>
       </div>
 
