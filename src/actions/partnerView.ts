@@ -51,12 +51,9 @@ export async function getMyPartnerAccess(): Promise<{
     const portfolioId = row.portfolio_id
     const myPercentage = Number(row.percentage)
 
-    // All partners in this portfolio (RLS policy added in migration)
+    // All partners in this portfolio via SECURITY DEFINER RPC (bypasses RLS)
     const { data: allPartnerRows } = await supabase
-      .from('partners')
-      .select('*')
-      .eq('portfolio_id', portfolioId)
-      .order('created_at', { ascending: true })
+      .rpc('get_portfolio_partners', { p_portfolio_id: portfolioId })
 
     // Owner profile
     const { data: ownerProfile } = await supabase

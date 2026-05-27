@@ -1,21 +1,29 @@
--- Allow an accepted partner to read ALL partner rows for portfolios they belong to.
--- Uses a SECURITY DEFINER helper to avoid infinite-recursion when the partners
--- table policy references itself.
+-- Returns all partner rows for a portfolio if the calling user is either the
+-- portfolio owner OR an accepted partner in that portfolio.
+-- SECURITY DEFINER bypasses RLS, so no additional policy is needed.
 
-CREATE OR REPLACE FUNCTION is_portfolio_partner(p_portfolio_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
+CREATE OR REPLACE FUNCTION get_portfolio_partners(p_portfolio_id UUID)
+RETURNS SETOF partners
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT EXISTS (
+BEGIN
+  -- Caller must be the owner or an accepted partner
+  IF NOT EXISTS (
+    SELECT 1 FROM portfolios
+    WHERE id = p_portfolio_id AND user_id = auth.uid()
+  ) AND NOT EXISTS (
     SELECT 1 FROM partners
-    WHERE portfolio_id    = p_portfolio_id
-      AND partner_user_id = auth.uid()
-  );
-$$;
+    WHERE portfolio_id = p_portfolio_id AND partner_user_id = auth.uid()
+  ) THEN
+    RETURN;
+  END IF;
 
-CREATE POLICY "Partners can view all partners in their portfolio"
-  ON partners FOR SELECT
-  USING (is_portfolio_partner(portfolio_id));
+  RETURN QUERY
+    SELECT * FROM partners
+    WHERE portfolio_id = p_portfolio_id
+    ORDER BY created_at ASC;
+END;
+$$;
