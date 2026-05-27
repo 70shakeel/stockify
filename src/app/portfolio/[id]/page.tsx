@@ -6,6 +6,7 @@ import { PortfolioTabs } from '@/components/dashboard/PortfolioTabs'
 import { Briefcase, ArrowLeft, Lock } from 'lucide-react'
 import Link from 'next/link'
 import { cn, formatCurrency, getChangeColor } from '@/lib/utils'
+import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -41,31 +42,34 @@ export default async function PortfolioDetailPage({ params }: Props) {
           <ArrowLeft className="w-3.5 h-3.5" /> Dashboard
         </Link>
 
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-            style={{ backgroundColor: (portfolio?.color ?? '#10b981') + '20', border: `1px solid ${(portfolio?.color ?? '#10b981')}40` }}
-          >
-            <Briefcase className="w-5 h-5" style={{ color: portfolio?.color ?? '#10b981' }} />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: (portfolio?.color ?? '#10b981') + '20', border: `1px solid ${(portfolio?.color ?? '#10b981')}40` }}
+            >
+              <Briefcase className="w-5 h-5" style={{ color: portfolio?.color ?? '#10b981' }} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-zinc-100">{portfolio?.name ?? 'Portfolio'}</h1>
+              {access.isPartner && (
+                <p className="text-sm text-zinc-500 mt-0.5 flex items-center gap-1.5">
+                  <Lock className="w-3 h-3" />
+                  Owned by {access.ownerName ?? 'Portfolio Owner'} · Your share:{' '}
+                  <span className={cn('font-semibold', getChangeColor(
+                    summaryResult.data ? (summaryResult.data.totalPNL * (access.percentage ?? 0)) / 100 : 0
+                  ))}>
+                    {access.percentage?.toFixed(1)}%
+                    {summaryResult.data && ` · ${formatCurrency((summaryResult.data.totalPNL * (access.percentage ?? 0)) / 100)}`}
+                  </span>
+                </p>
+              )}
+              {portfolio?.description && (
+                <p className="text-sm text-zinc-500 mt-0.5">{portfolio.description}</p>
+              )}
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-zinc-100">{portfolio?.name ?? 'Portfolio'}</h1>
-            {access.isPartner && (
-              <p className="text-sm text-zinc-500 mt-0.5 flex items-center gap-1.5">
-                <Lock className="w-3 h-3" />
-                Owned by {access.ownerName ?? 'Portfolio Owner'} · Your share:{' '}
-                <span className={cn('font-semibold', getChangeColor(
-                  summaryResult.data ? (summaryResult.data.totalPNL * (access.percentage ?? 0)) / 100 : 0
-                ))}>
-                  {access.percentage?.toFixed(1)}%
-                  {summaryResult.data && ` · ${formatCurrency((summaryResult.data.totalPNL * (access.percentage ?? 0)) / 100)}`}
-                </span>
-              </p>
-            )}
-            {portfolio?.description && (
-              <p className="text-sm text-zinc-500 mt-0.5">{portfolio.description}</p>
-            )}
-          </div>
+          <RefreshPricesButton />
         </div>
       </div>
 
