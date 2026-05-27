@@ -12,13 +12,13 @@ import {
   LogOut,
   User,
   PieChart,
-  Briefcase,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { NavPortfolioSelector } from './NavPortfolioSelector'
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: BarChart3 },
@@ -26,7 +26,6 @@ const navItems = [
   { href: '/portfolio', label: 'Portfolio', icon: LineChart },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/profit-split', label: 'Profit Split', icon: PieChart },
-  { href: '/portfolios', label: 'Portfolios', icon: Briefcase },
 ]
 
 export function Navbar() {
@@ -101,8 +100,10 @@ export function Navbar() {
             })}
           </div>
 
-          {/* Right: Search + User */}
+          {/* Right: Portfolio Selector + Search + User */}
           <div className="flex items-center gap-2">
+            {user && <NavPortfolioSelector />}
+
             <Link
               href="/stocks"
               className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"

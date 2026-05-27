@@ -10,10 +10,10 @@ import {
   Newspaper,
   X,
   PieChart,
-  Briefcase,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
+import { NavPortfolioSelector } from './NavPortfolioSelector'
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: BarChart3 },
@@ -21,7 +21,6 @@ const navItems = [
   { href: '/portfolio', label: 'Portfolio', icon: LineChart },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/profit-split', label: 'Profit Split', icon: PieChart },
-  { href: '/portfolios', label: 'Portfolios', icon: Briefcase },
 ]
 
 export function MobileNav() {
@@ -80,6 +79,12 @@ export function MobileNav() {
               </Link>
             )
           })}
+        </div>
+
+        {/* Portfolio Selector */}
+        <div className="px-4 py-3 border-t border-zinc-800">
+          <p className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Active Portfolio</p>
+          <NavPortfolioSelector />
         </div>
 
         {/* Footer */}
