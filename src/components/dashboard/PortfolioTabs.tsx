@@ -4,29 +4,34 @@ import { useState } from 'react'
 import { HoldingsTable } from '@/components/dashboard/HoldingsTable'
 import { InvestmentsTable } from '@/components/dashboard/InvestmentsTable'
 import { PositionsTable } from '@/components/dashboard/PositionsTable'
-import type { InvestmentEntry, PortfolioHolding, PortfolioPosition } from '@/lib/psx/types'
+import { TransactionList } from '@/components/transactions/TransactionList'
+import { TransactionListReadOnly } from '@/components/transactions/TransactionListReadOnly'
+import type { InvestmentEntry, PortfolioHolding, PortfolioPosition, Transaction } from '@/lib/psx/types'
 import { cn, formatCurrency } from '@/lib/utils'
 
-type PortfolioTab = 'positions' | 'holdings' | 'investments'
+type PortfolioTab = 'holdings' | 'positions' | 'transactions' | 'investments'
 
 interface PortfolioTabsProps {
   positions: PortfolioPosition[]
   holdings: PortfolioHolding[]
   investments: InvestmentEntry[]
+  transactions: Transaction[]
+  isOwner: boolean
 }
 
 const tabs: Array<{ id: PortfolioTab; label: string }> = [
   { id: 'holdings', label: 'Holdings' },
   { id: 'positions', label: 'Positions' },
+  { id: 'transactions', label: 'Transactions' },
   { id: 'investments', label: 'Investments' },
 ]
 
-export function PortfolioTabs({ positions, holdings, investments }: PortfolioTabsProps) {
+export function PortfolioTabs({ positions, holdings, investments, transactions, isOwner }: PortfolioTabsProps) {
   const [activeTab, setActiveTab] = useState<PortfolioTab>('holdings')
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex rounded-xl border border-zinc-800 bg-zinc-900/70 p-1">
+      <div className="inline-flex rounded-xl border border-zinc-800 bg-zinc-900/70 p-1 flex-wrap gap-y-1">
         {tabs.map(tab => (
           <button
             key={tab.id}
@@ -44,21 +49,10 @@ export function PortfolioTabs({ positions, holdings, investments }: PortfolioTab
         ))}
       </div>
 
-      {activeTab === 'positions' && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-zinc-200">
-            Positions ({positions.length})
-          </h2>
-          <PositionsTable positions={positions} />
-        </div>
-      )}
-
       {activeTab === 'holdings' && (
         <div className="space-y-4">
           <div className="flex items-baseline justify-between">
-            <h2 className="text-lg font-semibold text-zinc-200">
-              Holdings ({holdings.length})
-            </h2>
+            <h2 className="text-lg font-semibold text-zinc-200">Holdings ({holdings.length})</h2>
             <span className="text-sm text-zinc-400">
               Invested{' '}
               <span className="font-semibold text-zinc-200">
@@ -70,11 +64,26 @@ export function PortfolioTabs({ positions, holdings, investments }: PortfolioTab
         </div>
       )}
 
+      {activeTab === 'positions' && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-zinc-200">Positions ({positions.length})</h2>
+          <PositionsTable positions={positions} />
+        </div>
+      )}
+
+      {activeTab === 'transactions' && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-zinc-200">Transactions ({transactions.length})</h2>
+          {isOwner
+            ? <TransactionList transactions={transactions} />
+            : <TransactionListReadOnly transactions={transactions} />
+          }
+        </div>
+      )}
+
       {activeTab === 'investments' && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-zinc-200">
-            Investments ({investments.length})
-          </h2>
+          <h2 className="text-lg font-semibold text-zinc-200">Investments ({investments.length})</h2>
           <InvestmentsTable investments={investments} />
         </div>
       )}

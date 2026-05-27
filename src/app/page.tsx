@@ -10,11 +10,12 @@ import {
   getInvestmentsById,
   getPortfolioPositionsById,
   getPortfolioAccess,
+  getTransactionsByPortfolioId,
 } from '@/actions/portfolioById'
 import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary'
 import { PortfolioTabs } from '@/components/dashboard/PortfolioTabs'
 import { ProfitSplitSummary } from '@/components/dashboard/ProfitSplitSummary'
-import { PartnerAccessPanel } from '@/components/partners/PartnerAccessPanel'
+import { PartnerProfitList } from '@/components/partners/PartnerProfitList'
 import { PortfolioSwitcher } from '@/components/dashboard/PortfolioSwitcher'
 import { PortfolioSelectScreen } from '@/components/dashboard/PortfolioSelectScreen'
 import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
@@ -56,11 +57,12 @@ async function DashboardContent() {
   // Fetch full dashboard data for the active portfolio
   const access = await getPortfolioAccess(activeId)
 
-  const [summaryResult, holdingsResult, investmentsResult, positionsResult] = await Promise.all([
+  const [summaryResult, holdingsResult, investmentsResult, positionsResult, transactionsResult] = await Promise.all([
     getPortfolioSummaryById(activeId),
     getPortfolioHoldingsById(activeId),
     getInvestmentsById(activeId),
     getPortfolioPositionsById(activeId),
+    getTransactionsByPortfolioId(activeId),
   ])
 
   // Profit split data
@@ -111,11 +113,13 @@ async function DashboardContent() {
       {/* Summary stats */}
       {summaryResult.data && <PortfolioSummary summary={summaryResult.data} />}
 
-      {/* Holdings / Positions / Investments tabs */}
+      {/* Holdings / Positions / Transactions / Investments tabs */}
       <PortfolioTabs
         positions={positionsResult.data ?? []}
         holdings={holdingsResult.data ?? []}
         investments={investmentsResult.data ?? []}
+        transactions={transactionsResult.data ?? []}
+        isOwner={access.isOwner}
       />
 
       {/* Profit split — owner view */}
@@ -123,10 +127,17 @@ async function DashboardContent() {
         <ProfitSplitSummary partners={profitSplitPartners} summary={summaryResult.data} />
       )}
 
-      {/* Profit split — partner (invited member) view */}
-      {partnerAccessData.length > 0 && (
-        <PartnerAccessPanel portfolios={partnerAccessData} />
-      )}
+      {/* Profit split — partner view: show all partners with their shares */}
+      {partnerAccessData.length > 0 && summaryResult.data && (() => {
+        const p = partnerAccessData[0]
+        return p.all_partners.length > 0 ? (
+          <PartnerProfitList
+            partners={p.all_partners}
+            summary={summaryResult.data!}
+            myPartnerId={p.partner_id}
+          />
+        ) : null
+      })()}
 
       <Suspense fallback={<Card className="py-12"><Spinner className="mx-auto" /></Card>}>
         <NewsFeed />

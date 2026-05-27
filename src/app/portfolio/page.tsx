@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { getPortfolioSummary, getPortfolioHoldings, getPortfolioPositions } from '@/actions/portfolio'
 import { getInvestments } from '@/actions/investments'
+import { getTransactions } from '@/actions/transactions'
 import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary'
 import { PortfolioTabs } from '@/components/dashboard/PortfolioTabs'
 import { Spinner } from '@/components/ui/Spinner'
@@ -12,11 +13,12 @@ export const metadata: Metadata = {
 }
 
 async function PortfolioContent() {
-  const [summaryResult, holdingsResult, investmentsResult, positionsResult] = await Promise.all([
+  const [summaryResult, holdingsResult, investmentsResult, positionsResult, transactionsResult] = await Promise.all([
     getPortfolioSummary(),
     getPortfolioHoldings(),
     getInvestments(),
     getPortfolioPositions(),
+    getTransactions(),
   ])
 
   return (
@@ -37,6 +39,8 @@ async function PortfolioContent() {
         positions={positionsResult.data}
         holdings={holdingsResult.data}
         investments={investmentsResult.data}
+        transactions={transactionsResult.data}
+        isOwner={true}
       />
     </div>
   )

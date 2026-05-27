@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import type { PortfolioHolding, PortfolioSummaryData, PortfolioPosition, InvestmentEntry } from '@/lib/psx/types'
+import type { PortfolioHolding, PortfolioSummaryData, PortfolioPosition, InvestmentEntry, Transaction } from '@/lib/psx/types'
 
 const TAX_RATE = 0.15
 
@@ -282,4 +282,46 @@ export async function getPortfolioAccess(portfolioId: string): Promise<{
   }
 
   return { isOwner: false, isPartner: false, ownerName: null, percentage: null }
+}
+
+export async function getTransactionsByPortfolioId(portfolioId: string): Promise<{
+  data: Transaction[]; error: string | null
+}> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { data: [], error: 'Not authenticated' }
+
+  const { data: txs, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('portfolio_id', portfolioId)
+    .order('executed_at', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) return { data: [], error: error.message }
+
+  // Back-fill cost_basis for SELL rows using the same lot-aware replay
+  const rows = txs ?? []
+  const bySymbol = new Map<string, typeof rows>()
+  for (const tx of rows) {
+    const b = bySymbol.get(tx.symbol) ?? []; b.push(tx); bySymbol.set(tx.symbol, b)
+  }
+  for (const bucket of bySymbol.values()) {
+    const chrono = [...bucket].sort((a, b) => {
+      const d = new Date(a.executed_at).getTime() - new Date(b.executed_at).getTime()
+      return d !== 0 ? d : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    })
+    let cost = 0, qty = 0, net = 0
+    for (const tx of chrono) {
+      const q = Number(tx.quantity), p = Number(tx.price_per_share)
+      if (tx.type === 'BUY') {
+        if (net <= 0) { cost = 0; qty = 0 }
+        cost += q * p; qty += q; net += q
+      } else if (tx.type === 'SELL') {
+        tx.cost_basis = qty > 0 ? cost / qty : 0; net -= q
+      }
+    }
+  }
+
+  return { data: rows as Transaction[], error: null }
 }
