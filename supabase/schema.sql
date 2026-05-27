@@ -385,9 +385,25 @@ CREATE POLICY "Owners can view own partners"
   ON partners FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Partners can select their own record"
+-- Accepted partners can see all partner rows for portfolios they belong to.
+-- Uses a SECURITY DEFINER helper to avoid policy self-reference recursion.
+CREATE OR REPLACE FUNCTION is_portfolio_partner(p_portfolio_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM partners
+    WHERE portfolio_id    = p_portfolio_id
+      AND partner_user_id = auth.uid()
+  );
+$$;
+
+CREATE POLICY "Partners can view all partners in their portfolio"
   ON partners FOR SELECT
-  USING (auth.uid() = partner_user_id);
+  USING (is_portfolio_partner(portfolio_id));
 
 CREATE POLICY "Owners can insert own partners"
   ON partners FOR INSERT
