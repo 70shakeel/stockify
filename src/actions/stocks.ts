@@ -1,5 +1,6 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { scrapeStockData } from '@/lib/psx/scraper'
 
@@ -21,19 +22,11 @@ export async function searchStocks(query: string) {
     .limit(12)
 
   if (data && data.length > 0) {
-    // Check if any results need live prices (seeded with last_price: 0)
-    const needsPrices = data.filter((s) => !s.last_price || s.last_price === 0)
-
-    if (needsPrices.length === 0) {
-      // All have prices already — return instantly
-      return { data, error: null }
-    }
-
-    // Fetch live prices for entries missing them (parallel, 5s timeout)
+    // Always scrape fresh prices for search results (parallel, 5s timeout)
     const priceResults = await Promise.allSettled(
-      needsPrices.slice(0, 8).map((s) =>
+      data.slice(0, 8).map((s) =>
         Promise.race([
-          scrapeStockData(s.symbol),
+          scrapeStockData(s.symbol, { force: true }),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
         ])
       )
@@ -44,14 +37,14 @@ export async function searchStocks(query: string) {
     priceResults.forEach((result, i) => {
       if (result.status === 'fulfilled' && result.value) {
         const scraped = result.value
-        priceMap.set(needsPrices[i].symbol, {
+        priceMap.set(data[i].symbol, {
           lastPrice: scraped.lastPrice,
           change: scraped.change,
           changePercent: scraped.changePercent,
           volume: scraped.volume,
         })
 
-        // Background upsert for future cache
+        // Background upsert to keep DB in sync
         void (async () => {
           try {
             await supabase.from('stocks').upsert({
@@ -75,7 +68,7 @@ export async function searchStocks(query: string) {
       }
     })
 
-    // Merge prices into original results
+    // Merge live prices into results, fall back to DB price if scrape failed
     const enriched = data.map((s) => {
       const live = priceMap.get(s.symbol)
       if (live) {
@@ -194,6 +187,10 @@ export async function refreshPortfolioPrices(portfolioId: string) {
   if (symbols.length === 0) return { error: null }
 
   await Promise.all(symbols.map(sym => refreshStockPrice(sym)))
+
+  revalidatePath('/')
+  revalidatePath('/portfolio')
+
   return { error: null }
 }
 
