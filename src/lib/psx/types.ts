@@ -105,6 +105,7 @@ export interface InvestmentInput {
   amount: number
   notes?: string
   invested_at?: string
+  portfolio_id: string
 }
 
 export interface NewsItem {

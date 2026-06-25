@@ -84,6 +84,7 @@ export default async function PortfolioDetailPage({ params }: Props) {
         investments={investmentsResult.data}
         transactions={transactionsResult.data ?? []}
         isOwner={access.isOwner}
+        portfolioId={id}
       />
     </div>
   )

@@ -118,6 +118,7 @@ async function DashboardContent() {
         investments={investmentsResult.data ?? []}
         transactions={transactionsResult.data ?? []}
         isOwner={access.isOwner}
+        portfolioId={activeId}
       />
 
       {/* Profit split — owner view */}

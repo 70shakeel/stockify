@@ -17,6 +17,7 @@ interface PortfolioTabsProps {
   investments: InvestmentEntry[]
   transactions: Transaction[]
   isOwner: boolean
+  portfolioId: string
 }
 
 const tabs: Array<{ id: PortfolioTab; label: string }> = [
@@ -26,7 +27,7 @@ const tabs: Array<{ id: PortfolioTab; label: string }> = [
   { id: 'investments', label: 'Investments' },
 ]
 
-export function PortfolioTabs({ positions, holdings, investments, transactions, isOwner }: PortfolioTabsProps) {
+export function PortfolioTabs({ positions, holdings, investments, transactions, isOwner, portfolioId }: PortfolioTabsProps) {
   const [activeTab, setActiveTab] = useState<PortfolioTab>('holdings')
 
   return (
@@ -84,7 +85,7 @@ export function PortfolioTabs({ positions, holdings, investments, transactions, 
       {activeTab === 'investments' && (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-zinc-200">Investments ({investments.length})</h2>
-          <InvestmentsTable investments={investments} />
+          <InvestmentsTable investments={investments} portfolioId={portfolioId} />
         </div>
       )}
     </div>

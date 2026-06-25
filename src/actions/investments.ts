@@ -63,6 +63,7 @@ export async function addInvestment(input: InvestmentInput) {
     .from('investments')
     .insert({
       user_id: user.id,
+      portfolio_id: input.portfolio_id,
       type: input.type,
       amount: input.amount,
       notes: input.notes || null,

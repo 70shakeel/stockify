@@ -27,10 +27,10 @@ function extractNumber(text: string | undefined): number {
 /**
  * Main scraper function — fetches real-time PSX stock data directly
  */
-export async function scrapeStockData(ticker: string): Promise<StockData | null> {
+export async function scrapeStockData(ticker: string, { force = false } = {}): Promise<StockData | null> {
   const normalizedTicker = ticker.toUpperCase().trim()
 
-  if (isThrottled(normalizedTicker)) {
+  if (!force && isThrottled(normalizedTicker)) {
     console.log(`Throttled: ${normalizedTicker} was fetched recently`)
     return null
   }

@@ -12,9 +12,10 @@ import type { InvestmentEntry } from '@/lib/psx/types'
 
 interface InvestmentsTableProps {
   investments: InvestmentEntry[]
+  portfolioId: string
 }
 
-export function InvestmentsTable({ investments }: InvestmentsTableProps) {
+export function InvestmentsTable({ investments, portfolioId }: InvestmentsTableProps) {
   const [type, setType] = useState<'ADD' | 'WITHDRAW'>('ADD')
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -50,6 +51,7 @@ export function InvestmentsTable({ investments }: InvestmentsTableProps) {
         amount: parsedAmount,
         notes: notes.trim() || undefined,
         invested_at: new Date(date).toISOString(),
+        portfolio_id: portfolioId,
       })
 
       if (result.error) {
@@ -128,7 +130,7 @@ export function InvestmentsTable({ investments }: InvestmentsTableProps) {
             label={type === 'ADD' ? 'Amount Added' : 'Amount Withdrawn'}
             type="number"
             min="0"
-            step="0.01"
+            step="any"
             placeholder="100000"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}

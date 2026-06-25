@@ -203,7 +203,7 @@ export async function refreshStockPrice(symbol: string) {
     const normalizedTicker = symbol.toUpperCase().trim()
     
     // Scrape data directly via our high-speed DOM parser (Cheerio)
-    const stockData = await scrapeStockData(normalizedTicker)
+    const stockData = await scrapeStockData(normalizedTicker, { force: true })
     if (!stockData) {
        return { error: `Could not fetch data for ${normalizedTicker}` }
     }
