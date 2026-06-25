@@ -15,6 +15,7 @@ import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary'
 import { PortfolioTabs } from '@/components/dashboard/PortfolioTabs'
 import { RememberPortfolio } from '@/components/dashboard/RememberPortfolio'
 import { PortfolioSelectScreen } from '@/components/dashboard/PortfolioSelectScreen'
+import { RefreshPricesButton } from '@/components/dashboard/RefreshPricesButton'
 import { Spinner } from '@/components/ui/Spinner'
 import { Lock } from 'lucide-react'
 import { cn, formatCurrency, getChangeColor } from '@/lib/utils'
@@ -61,7 +62,8 @@ async function PortfolioContent() {
   return (
     <div className="space-y-8">
       <RememberPortfolio portfolioId={activeId} />
-      <div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
         <h1 className="text-2xl font-bold text-zinc-100">{activePortfolio?.name ?? 'Portfolio'}</h1>
         {access.isPartner && (
           <p className="text-sm text-zinc-500 mt-0.5 flex items-center gap-1.5">
@@ -78,6 +80,10 @@ async function PortfolioContent() {
         {activePortfolio?.description && (
           <p className="text-sm text-zinc-500 mt-1">{activePortfolio.description}</p>
         )}
+        </div>
+        <div className="shrink-0">
+          <RefreshPricesButton portfolioId={activeId} />
+        </div>
       </div>
 
       {summaryResult.data && <PortfolioSummary summary={summaryResult.data} />}

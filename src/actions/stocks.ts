@@ -177,13 +177,12 @@ export async function refreshPortfolioPrices(portfolioId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
-  const { data: holdings } = await supabase
-    .from('portfolio_holdings')
+  const { data: txs } = await supabase
+    .from('transactions')
     .select('symbol')
     .eq('portfolio_id', portfolioId)
-    .gt('net_quantity', 0)
 
-  const symbols = [...new Set((holdings ?? []).map((h: { symbol: string }) => h.symbol))]
+  const symbols = [...new Set((txs ?? []).map((t: { symbol: string }) => t.symbol))]
   if (symbols.length === 0) return { error: null }
 
   await Promise.all(symbols.map(sym => refreshStockPrice(sym)))
