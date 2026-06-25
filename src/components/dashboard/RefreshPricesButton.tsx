@@ -2,7 +2,6 @@
 
 import { Button } from '@/components/ui/Button'
 import { RefreshCw } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { refreshPortfolioPrices } from '@/actions/stocks'
 
@@ -11,15 +10,12 @@ interface Props {
 }
 
 export function RefreshPricesButton({ portfolioId }: Props) {
-  const router = useRouter()
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const handleRefresh = async () => {
+    if (!portfolioId) return
     setIsRefreshing(true)
-    if (portfolioId) {
-      await refreshPortfolioPrices(portfolioId)
-    }
-    router.refresh()
+    await refreshPortfolioPrices(portfolioId)
     setIsRefreshing(false)
   }
 

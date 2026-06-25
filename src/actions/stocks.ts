@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { refresh } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { scrapeStockData } from '@/lib/psx/scraper'
 
@@ -188,8 +188,7 @@ export async function refreshPortfolioPrices(portfolioId: string) {
 
   await Promise.all(symbols.map(sym => refreshStockPrice(sym)))
 
-  revalidatePath('/')
-  revalidatePath('/portfolio')
+  refresh()
 
   return { error: null }
 }
