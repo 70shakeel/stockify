@@ -96,7 +96,7 @@ export async function getPortfolioSummaryById(portfolioId: string): Promise<{
       totalGainLossPercent: totalInvested > 0 ? parseFloat(((potentialGainLoss / totalInvested) * 100).toFixed(2)) : 0,
       totalFees, holdingsCount: (holdings ?? []).length,
       realizedGainLoss, potentialGainLoss, totalPNL,
-      investmentAvailable: totalPortfolioValue - totalInvested,
+      investmentAvailable: totalAddedFunds - totalWithdrawnFunds + realizedGainLoss + totalDividends - totalProfitWithdrawn - totalInvested,
       totalAddedFunds, totalWithdrawnFunds, totalTaxPaid, totalDividends,
       totalProfitWithdrawn, totalPortfolioValue,
     },
