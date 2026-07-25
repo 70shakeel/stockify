@@ -178,30 +178,31 @@ export function PortfolioSummary({ summary, partners }: PortfolioSummaryProps) {
             >
               {stat.value}
             </p>
-            {stat.breakdown ? (
-              cashExpanded && (
-                <div className="mt-1 space-y-0.5">
-                  {stat.breakdown.map(row => (
-                    <div key={row.label} className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] text-zinc-600">{row.label}</span>
-                      <span className={cn('text-[10px] font-medium', row.positive ? 'text-zinc-400' : 'text-zinc-500')}>
-                        {row.positive ? '+' : '−'}{row.value}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )
-            ) : stat.subValue ? (
+            {stat.subValue ? (
               <p className="text-xs text-zinc-500 mt-0.5">{stat.subValue}</p>
             ) : null}
             {stat.breakdown ? (
-              <button
-                onClick={() => setCashExpanded(v => !v)}
-                className="flex items-center gap-1 mt-1 cursor-pointer text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
-                <span className="text-xs">{stat.label}</span>
-                <ChevronDown className={cn('w-3 h-3 transition-transform', cashExpanded && 'rotate-180')} />
-              </button>
+              <div>
+                <button
+                  onClick={() => setCashExpanded(v => !v)}
+                  className="flex items-center justify-between w-full mt-1 cursor-pointer group"
+                >
+                  <span className="text-xs text-zinc-500">{stat.label}</span>
+                  <ChevronDown className={cn('w-3 h-3 text-zinc-600 group-hover:text-zinc-400 transition-transform', cashExpanded && 'rotate-180')} />
+                </button>
+                {cashExpanded && (
+                  <div className="mt-1.5 space-y-0.5">
+                    {stat.breakdown.map(row => (
+                      <div key={row.label} className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-zinc-600">{row.label}</span>
+                        <span className={cn('text-[10px] font-medium', row.positive ? 'text-zinc-400' : 'text-zinc-500')}>
+                          {row.positive ? '+' : '−'}{row.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             ) : (
               <p className="text-xs text-zinc-500 mt-1">{stat.label}</p>
             )}
