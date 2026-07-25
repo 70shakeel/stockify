@@ -109,7 +109,18 @@ async function DashboardContent() {
       </div>
 
       {/* Summary stats */}
-      {summaryResult.data && <PortfolioSummary summary={summaryResult.data} />}
+      {summaryResult.data && (
+        <PortfolioSummary
+          summary={summaryResult.data}
+          partners={
+            access.isOwner
+              ? (profitSplitPartners ?? [])
+              : (partnerAccessData[0]?.all_partners ?? []).filter(
+                  p => p.id === partnerAccessData[0]?.partner_id
+                )
+          }
+        />
+      )}
 
       {/* Holdings / Positions / Transactions / Investments tabs */}
       <PortfolioTabs

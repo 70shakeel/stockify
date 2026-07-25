@@ -22,62 +22,7 @@ export async function searchStocks(query: string) {
     .limit(12)
 
   if (data && data.length > 0) {
-    // Always scrape fresh prices for search results (parallel, 5s timeout)
-    const priceResults = await Promise.allSettled(
-      data.slice(0, 8).map((s) =>
-        Promise.race([
-          scrapeStockData(s.symbol, { force: true }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
-        ])
-      )
-    )
-
-    // Build a price map from scraped results
-    const priceMap = new Map<string, { lastPrice: number; change: number; changePercent: number; volume: number }>()
-    priceResults.forEach((result, i) => {
-      if (result.status === 'fulfilled' && result.value) {
-        const scraped = result.value
-        priceMap.set(data[i].symbol, {
-          lastPrice: scraped.lastPrice,
-          change: scraped.change,
-          changePercent: scraped.changePercent,
-          volume: scraped.volume,
-        })
-
-        // Background upsert to keep DB in sync
-        void (async () => {
-          try {
-            await supabase.from('stocks').upsert({
-              symbol: scraped.symbol,
-              name: scraped.name,
-              sector: scraped.sector,
-              last_price: scraped.lastPrice,
-              change: scraped.change,
-              change_percent: scraped.changePercent,
-              volume: scraped.volume,
-              high: scraped.high,
-              low: scraped.low,
-              open: scraped.open,
-              close: scraped.close,
-              last_updated: scraped.lastUpdated,
-            }, { onConflict: 'symbol' })
-          } catch (e) {
-            console.error('Background upsert failed:', e)
-          }
-        })()
-      }
-    })
-
-    // Merge live prices into results, fall back to DB price if scrape failed
-    const enriched = data.map((s) => {
-      const live = priceMap.get(s.symbol)
-      if (live) {
-        return { ...s, last_price: live.lastPrice, change: live.change, change_percent: live.changePercent, volume: live.volume }
-      }
-      return s
-    })
-
-    return { data: enriched, error: null }
+    return { data, error: null }
   }
 
   // 2. Fallback: query live PSX symbols endpoint
@@ -100,57 +45,15 @@ export async function searchStocks(query: string) {
 
     if (matches.length === 0) return { data: [], error: null }
 
-    // Fetch live prices for matched symbols in parallel (cap at 5s)
-    const priceResults = await Promise.allSettled(
-      matches.map((s) =>
-        Promise.race([
-          scrapeStockData(s.symbol),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
-        ])
-      )
-    )
-
-    // Merge prices into the matches; upsert into DB for future cache hits
-    const enriched = await Promise.all(
-      matches.map(async (s, i) => {
-        const result = priceResults[i]
-        const scraped = result.status === 'fulfilled' && result.value ? result.value : null
-
-        if (scraped) {
-          // Background upsert so future searches hit the local DB
-          void (async () => {
-            try {
-              await supabase.from('stocks').upsert({
-                symbol: scraped.symbol,
-                name: scraped.name,
-                sector: scraped.sector,
-                last_price: scraped.lastPrice,
-                change: scraped.change,
-                change_percent: scraped.changePercent,
-                volume: scraped.volume,
-                high: scraped.high,
-                low: scraped.low,
-                open: scraped.open,
-                close: scraped.close,
-                last_updated: scraped.lastUpdated,
-              }, { onConflict: 'symbol' })
-            } catch (e) {
-              console.error('Background upsert failed:', e)
-            }
-          })()
-        }
-
-        return {
-          symbol: s.symbol,
-          name: s.name,
-          sector: s.sectorName,
-          last_price: scraped?.lastPrice ?? 0,
-          change: scraped?.change ?? 0,
-          change_percent: scraped?.changePercent ?? 0,
-          volume: scraped?.volume ?? 0,
-        }
-      })
-    )
+    const enriched = matches.map((s) => ({
+      symbol: s.symbol,
+      name: s.name,
+      sector: s.sectorName,
+      last_price: 0,
+      change: 0,
+      change_percent: 0,
+      volume: 0,
+    }))
 
     return { data: enriched, error: null }
   } catch {

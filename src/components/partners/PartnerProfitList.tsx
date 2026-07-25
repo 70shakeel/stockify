@@ -39,7 +39,7 @@ export function PartnerProfitList({
 }: Props) {
   const isOwnerView = !!onEdit
 
-  const profit        = summary.totalPNL
+  const combinedRealized = summary.realizedGainLoss + summary.totalDividends
   const realizedPnL   = summary.realizedGainLoss
   const unrealizedPnL = summary.potentialGainLoss
   const totalDividends = summary.totalDividends
@@ -65,7 +65,7 @@ export function PartnerProfitList({
       <div className="divide-y divide-zinc-800/60">
         {partners.map(partner => {
           const pct             = Number(partner.percentage)
-          const share           = (profit * pct) / 100
+          const share           = (combinedRealized * pct) / 100
           const realizedShare   = (realizedPnL * pct) / 100
           const unrealizedShare = (unrealizedPnL * pct) / 100
           const dividendShare   = (totalDividends * pct) / 100
@@ -225,8 +225,8 @@ export function PartnerProfitList({
       {partners.length > 1 && (
         <div className="px-5 py-3 border-t border-zinc-800 bg-zinc-900/50 rounded-b-xl flex items-center justify-between text-sm">
           <span className="text-zinc-500">{partners.length} partners · {totalPercent.toFixed(1)}% allocated</span>
-          <span className={cn('font-semibold', getChangeColor(profit))}>
-            Total: {profit >= 0 ? '+' : ''}{formatCurrency(profit)}
+          <span className={cn('font-semibold', getChangeColor(combinedRealized))}>
+            Realized: {combinedRealized >= 0 ? '+' : ''}{formatCurrency(combinedRealized)}
           </span>
         </div>
       )}

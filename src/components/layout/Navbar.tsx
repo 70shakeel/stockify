@@ -28,12 +28,13 @@ const navItems = [
   { href: '/profit-split', label: 'Profit Split', icon: PieChart },
 ]
 
+const supabase = createClient()
+
 export function Navbar() {
   const pathname = usePathname()
   const { toggleSidebar } = useAppStore()
   const router = useRouter()
   const [user, setUser] = useState<{ email?: string } | null>(null)
-  const supabase = createClient()
 
   useEffect(() => {
     // Get initial session

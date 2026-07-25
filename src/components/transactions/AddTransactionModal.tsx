@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useOptimistic, useTransition } from 'react'
+import { useState, useEffect, useCallback, useOptimistic, useTransition } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -102,10 +102,10 @@ export function AddTransactionModal() {
     setError(null)
   }
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     resetForm()
     closeTransactionModal()
-  }
+  }, [closeTransactionModal])
 
   const isDividend = type === 'DIVIDEND'
   const parsedQty = isDividend ? 1 : (parseInt(quantity) || 0)

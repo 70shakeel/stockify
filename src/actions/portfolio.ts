@@ -208,7 +208,7 @@ export async function getPortfolioSummary(): Promise<{
   if (!holdings || holdings.length === 0) {
     // No open positions: invested=0, currentValue=0
     const totalPortfolioValue = totalAddedFunds - totalWithdrawnFunds + realizedGainLoss - totalProfitWithdrawn + totalDividends
-    const investmentAvailable = totalPortfolioValue // nothing locked in stocks
+    const investmentAvailable = totalAddedFunds - totalWithdrawnFunds + realizedGainLoss - totalProfitWithdrawn
     return {
       data: {
         totalInvested: 0,
@@ -239,8 +239,8 @@ export async function getPortfolioSummary(): Promise<{
   const totalGainLossPercent = totalInvested > 0 ? (potentialGainLoss / totalInvested) * 100 : 0
   // Total portfolio = initial investment + realized profit - profit withdrawn + dividends - invested (at cost) + current market value
   const totalPortfolioValue = totalAddedFunds - totalWithdrawnFunds + realizedGainLoss - totalProfitWithdrawn + totalDividends - totalInvested + currentValue
-  // Cash available = what's liquid = total portfolio minus what's locked in stocks at cost
-  const investmentAvailableCalc = totalPortfolioValue - totalInvested
+  // Cash available = liquid funds: investment added − withdrawn + realized P&L − profit withdrawn − cost basis of open positions
+  const investmentAvailableCalc = totalAddedFunds - totalWithdrawnFunds + realizedGainLoss - totalProfitWithdrawn - totalInvested
 
   return {
     data: {

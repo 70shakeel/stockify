@@ -12,8 +12,7 @@ interface ProfitSplitSummaryProps {
 export function ProfitSplitSummary({ partners, summary }: ProfitSplitSummaryProps) {
   if (partners.length === 0) return null
 
-  const totalPnL = summary.totalPNL
-  const realizedPnL = summary.realizedGainLoss
+  const combinedRealized = summary.realizedGainLoss + summary.totalDividends
   const unrealizedPnL = summary.potentialGainLoss
   const totalDividends = summary.totalDividends
   const totalPercent = partners.reduce((sum, p) => sum + Number(p.percentage), 0)
@@ -58,10 +57,9 @@ export function ProfitSplitSummary({ partners, summary }: ProfitSplitSummaryProp
         <div className="divide-y divide-zinc-800/60">
           {partners.map(partner => {
             const pct = Number(partner.percentage)
-            const share = (totalPnL * pct) / 100
+            const share = (combinedRealized * pct) / 100
             const dividendShare = (totalDividends * pct) / 100
-
-            const realizedShare = (realizedPnL * pct) / 100
+            const realizedShare = (summary.realizedGainLoss * pct) / 100
             const unrealizedShare = (unrealizedPnL * pct) / 100
 
             return (
@@ -119,8 +117,8 @@ export function ProfitSplitSummary({ partners, summary }: ProfitSplitSummaryProp
         {/* Footer */}
         <div className="px-5 py-2.5 border-t border-zinc-800 bg-zinc-900/50 rounded-b-xl flex items-center justify-between text-xs text-zinc-500">
           <span>{totalPercent.toFixed(1)}% allocated</span>
-          <span className={cn('font-semibold', getChangeColor(totalPnL))}>
-            Total: {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)}
+          <span className={cn('font-semibold', getChangeColor(combinedRealized))}>
+            Realized: {combinedRealized >= 0 ? '+' : ''}{formatCurrency(combinedRealized)}
           </span>
         </div>
       </Card>

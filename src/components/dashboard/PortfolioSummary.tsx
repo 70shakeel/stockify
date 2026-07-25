@@ -1,6 +1,6 @@
 import { Card } from '@/components/ui/Card'
 import { formatCurrencyNoDecimals, formatPercent, getChangeColor, cn } from '@/lib/utils'
-import type { PortfolioSummaryData } from '@/lib/psx/types'
+import type { Partner, PortfolioSummaryData } from '@/lib/psx/types'
 import {
   Wallet,
   TrendingUp,
@@ -9,7 +9,6 @@ import {
   Receipt,
   Layers,
   Landmark,
-  ShieldAlert,
   DollarSign,
   ArrowUpRight,
   Globe,
@@ -17,10 +16,13 @@ import {
 
 interface PortfolioSummaryProps {
   summary: PortfolioSummaryData
+  partners?: Partner[]
 }
 
-export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
-  const stats = [
+export function PortfolioSummary({ summary, partners }: PortfolioSummaryProps) {
+  const combinedRealized = summary.realizedGainLoss + summary.totalDividends
+
+  const baseStats = [
     {
       label: 'Total Portfolio',
       value: formatCurrencyNoDecimals(summary.totalPortfolioValue),
@@ -50,20 +52,39 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
       color: 'text-purple-400',
       bgColor: 'bg-purple-500/10',
     },
-    {
-      label: 'Realized P&L',
-      value: formatCurrencyNoDecimals(summary.realizedGainLoss),
-      icon: Receipt,
-      color: getChangeColor(summary.realizedGainLoss),
-      bgColor: summary.realizedGainLoss >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10',
-    },
-    {
-      label: 'Dividends',
-      value: formatCurrencyNoDecimals(summary.totalDividends),
-      icon: DollarSign,
-      color: summary.totalDividends > 0 ? 'text-amber-400' : 'text-zinc-500',
-      bgColor: summary.totalDividends > 0 ? 'bg-amber-500/10' : 'bg-zinc-500/10',
-    },
+  ]
+
+  // Per-partner realized P&L cards (includes dividends), or a single card if no partners
+  const realizedStats = partners && partners.length > 0
+    ? partners.map(p => {
+        const share = (combinedRealized * Number(p.percentage)) / 100
+        return {
+          label: `${p.name}'s Realized`,
+          value: formatCurrencyNoDecimals(share),
+          subValue: summary.totalDividends > 0
+            ? `incl. ${formatCurrencyNoDecimals((summary.totalDividends * Number(p.percentage)) / 100)} div`
+            : undefined,
+          icon: Receipt,
+          color: getChangeColor(share),
+          bgColor: share >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10',
+          accentColor: p.color,
+        }
+      })
+    : [
+        {
+          label: 'Realized P&L',
+          value: formatCurrencyNoDecimals(combinedRealized),
+          subValue: summary.totalDividends > 0
+            ? `incl. ${formatCurrencyNoDecimals(summary.totalDividends)} div`
+            : undefined,
+          icon: Receipt,
+          color: getChangeColor(combinedRealized),
+          bgColor: combinedRealized >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10',
+          accentColor: undefined,
+        },
+      ]
+
+  const tailStats = [
     {
       label: 'Profit Withdrawn',
       value: formatCurrencyNoDecimals(summary.totalProfitWithdrawn),
@@ -95,14 +116,17 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
     },
   ]
 
+  const stats = [...baseStats, ...realizedStats, ...tailStats]
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-5 gap-3">
       {stats.map((stat, i) => {
         const Icon = stat.icon
+        const accentColor = (stat as { accentColor?: string }).accentColor
         return (
           <Card
             key={stat.label}
-            glow={stat.glow || null}
+            glow={(stat as { glow?: 'accent' }).glow || null}
             className={cn(
               'animate-fade-in-up opacity-0',
               `stagger-${Math.min(i + 1, 6)}`
@@ -112,6 +136,9 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
               <div className={cn('p-2 rounded-lg', stat.bgColor)}>
                 <Icon className={cn('w-4 h-4', stat.color)} />
               </div>
+              {accentColor && (
+                <div className="w-2.5 h-2.5 rounded-full mt-1" style={{ backgroundColor: accentColor }} />
+              )}
             </div>
             <p
               className={cn(
@@ -123,9 +150,9 @@ export function PortfolioSummary({ summary }: PortfolioSummaryProps) {
             >
               {stat.value}
             </p>
-            {stat.subValue && (
-              <p className={cn('text-xs font-medium mt-0.5', stat.color)}>
-                {stat.subValue}
+            {(stat as { subValue?: string }).subValue && (
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {(stat as { subValue?: string }).subValue}
               </p>
             )}
             <p className="text-xs text-zinc-500 mt-1">{stat.label}</p>

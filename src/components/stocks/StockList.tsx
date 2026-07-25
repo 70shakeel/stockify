@@ -35,13 +35,9 @@ export function StockList() {
   }, [])
 
   useEffect(() => {
-    fetchStocks('')
-  }, [fetchStocks])
-
-  useEffect(() => {
     const timer = setTimeout(() => {
       fetchStocks(searchQuery)
-    }, 300) // debounce 300ms
+    }, 300)
     return () => clearTimeout(timer)
   }, [searchQuery, fetchStocks])
 
