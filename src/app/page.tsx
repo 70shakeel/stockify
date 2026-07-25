@@ -112,13 +112,16 @@ async function DashboardContent() {
       {summaryResult.data && (
         <PortfolioSummary
           summary={summaryResult.data}
-          partners={
-            access.isOwner
-              ? (profitSplitPartners ?? [])
-              : (partnerAccessData[0]?.all_partners ?? []).filter(
-                  p => p.id === partnerAccessData[0]?.partner_id
-                )
-          }
+          partners={(() => {
+            if (access.isOwner) {
+              const all = profitSplitPartners ?? []
+              const mine = all.filter(p => p.partner_user_id === user.id)
+              return mine.length > 0 ? mine : all.slice(0, 1)
+            }
+            return (partnerAccessData[0]?.all_partners ?? []).filter(
+              p => p.id === partnerAccessData[0]?.partner_id
+            )
+          })()}
         />
       )}
 

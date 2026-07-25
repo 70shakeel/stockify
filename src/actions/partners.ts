@@ -25,7 +25,7 @@ export async function getPartnersByPortfolioId(portfolioId: string): Promise<{
 
   const { data, error } = await supabase
     .from('partners')
-    .select('*')
+    .select('id, user_id, name, percentage, color, notes, partner_user_id, created_at, updated_at')
     .eq('user_id', user.id)
     .eq('portfolio_id', portfolioId)
     .order('created_at', { ascending: true })

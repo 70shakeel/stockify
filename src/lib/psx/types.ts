@@ -124,6 +124,7 @@ export interface Partner {
   percentage: number
   color: string
   notes: string | null
+  partner_user_id: string | null
   created_at: string
   updated_at: string
 }
