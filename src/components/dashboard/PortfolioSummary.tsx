@@ -164,13 +164,9 @@ export function PortfolioSummary({ summary, partners }: PortfolioSummaryProps) {
               <div className={cn('p-2 rounded-lg', stat.bgColor)}>
                 <Icon className={cn('w-4 h-4', stat.color)} />
               </div>
-              {stat.breakdown ? (
-                <button onClick={() => setCashExpanded(v => !v)} className="cursor-pointer text-zinc-600 hover:text-zinc-400 transition-colors">
-                  <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', cashExpanded && 'rotate-180')} />
-                </button>
-              ) : stat.accentColor ? (
+              {stat.accentColor && (
                 <div className="w-2.5 h-2.5 rounded-full mt-1" style={{ backgroundColor: stat.accentColor }} />
-              ) : null}
+              )}
             </div>
             <p
               className={cn(
@@ -198,7 +194,17 @@ export function PortfolioSummary({ summary, partners }: PortfolioSummaryProps) {
             ) : stat.subValue ? (
               <p className="text-xs text-zinc-500 mt-0.5">{stat.subValue}</p>
             ) : null}
-            <p className="text-xs text-zinc-500 mt-1">{stat.label}</p>
+            {stat.breakdown ? (
+              <button
+                onClick={() => setCashExpanded(v => !v)}
+                className="flex items-center gap-1 mt-1 cursor-pointer text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <span className="text-xs">{stat.label}</span>
+                <ChevronDown className={cn('w-3 h-3 transition-transform', cashExpanded && 'rotate-180')} />
+              </button>
+            ) : (
+              <p className="text-xs text-zinc-500 mt-1">{stat.label}</p>
+            )}
           </Card>
         )
       })}
