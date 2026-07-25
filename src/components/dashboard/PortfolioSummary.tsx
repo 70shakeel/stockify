@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { formatCurrencyNoDecimals, formatPercent, getChangeColor, cn } from '@/lib/utils'
 import type { Partner, PortfolioSummaryData } from '@/lib/psx/types'
@@ -11,6 +14,7 @@ import {
   Landmark,
   ArrowUpRight,
   Globe,
+  ChevronDown,
 } from 'lucide-react'
 
 interface StatItem {
@@ -31,6 +35,7 @@ interface PortfolioSummaryProps {
 }
 
 export function PortfolioSummary({ summary, partners }: PortfolioSummaryProps) {
+  const [cashExpanded, setCashExpanded] = useState(true)
   const combinedRealized = summary.realizedGainLoss + summary.totalDividends
 
   const myPct = partners && partners.length > 0 ? Number(partners[0].percentage) / 100 : 1
@@ -174,15 +179,26 @@ export function PortfolioSummary({ summary, partners }: PortfolioSummaryProps) {
               {stat.value}
             </p>
             {stat.breakdown ? (
-              <div className="mt-1 space-y-0.5">
-                {stat.breakdown.map(row => (
-                  <div key={row.label} className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-zinc-600">{row.label}</span>
-                    <span className={cn('text-[10px] font-medium', row.positive ? 'text-zinc-400' : 'text-zinc-500')}>
-                      {row.positive ? '+' : '−'}{row.value}
-                    </span>
+              <div className="mt-1">
+                <button
+                  onClick={() => setCashExpanded(v => !v)}
+                  className="flex items-center gap-1 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors cursor-pointer"
+                >
+                  <ChevronDown className={cn('w-3 h-3 transition-transform', cashExpanded && 'rotate-180')} />
+                  {cashExpanded ? 'Hide' : 'Show'} breakdown
+                </button>
+                {cashExpanded && (
+                  <div className="mt-1 space-y-0.5">
+                    {stat.breakdown.map(row => (
+                      <div key={row.label} className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-zinc-600">{row.label}</span>
+                        <span className={cn('text-[10px] font-medium', row.positive ? 'text-zinc-400' : 'text-zinc-500')}>
+                          {row.positive ? '+' : '−'}{row.value}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             ) : stat.subValue ? (
               <p className="text-xs text-zinc-500 mt-0.5">{stat.subValue}</p>
