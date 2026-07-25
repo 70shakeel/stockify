@@ -35,7 +35,7 @@ interface PortfolioSummaryProps {
 }
 
 export function PortfolioSummary({ summary, partners }: PortfolioSummaryProps) {
-  const [cashExpanded, setCashExpanded] = useState(true)
+  const [cashExpanded, setCashExpanded] = useState(false)
   const combinedRealized = summary.realizedGainLoss + summary.totalDividends
 
   const myPct = partners && partners.length > 0 ? Number(partners[0].percentage) / 100 : 1
@@ -164,9 +164,13 @@ export function PortfolioSummary({ summary, partners }: PortfolioSummaryProps) {
               <div className={cn('p-2 rounded-lg', stat.bgColor)}>
                 <Icon className={cn('w-4 h-4', stat.color)} />
               </div>
-              {stat.accentColor && (
+              {stat.breakdown ? (
+                <button onClick={() => setCashExpanded(v => !v)} className="cursor-pointer text-zinc-600 hover:text-zinc-400 transition-colors">
+                  <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', cashExpanded && 'rotate-180')} />
+                </button>
+              ) : stat.accentColor ? (
                 <div className="w-2.5 h-2.5 rounded-full mt-1" style={{ backgroundColor: stat.accentColor }} />
-              )}
+              ) : null}
             </div>
             <p
               className={cn(
@@ -179,27 +183,18 @@ export function PortfolioSummary({ summary, partners }: PortfolioSummaryProps) {
               {stat.value}
             </p>
             {stat.breakdown ? (
-              <div className="mt-1">
-                <button
-                  onClick={() => setCashExpanded(v => !v)}
-                  className="flex items-center gap-1 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors cursor-pointer"
-                >
-                  <ChevronDown className={cn('w-3 h-3 transition-transform', cashExpanded && 'rotate-180')} />
-                  {cashExpanded ? 'Hide' : 'Show'} breakdown
-                </button>
-                {cashExpanded && (
-                  <div className="mt-1 space-y-0.5">
-                    {stat.breakdown.map(row => (
-                      <div key={row.label} className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] text-zinc-600">{row.label}</span>
-                        <span className={cn('text-[10px] font-medium', row.positive ? 'text-zinc-400' : 'text-zinc-500')}>
-                          {row.positive ? '+' : '−'}{row.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              cashExpanded && (
+                <div className="mt-1 space-y-0.5">
+                  {stat.breakdown.map(row => (
+                    <div key={row.label} className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-zinc-600">{row.label}</span>
+                      <span className={cn('text-[10px] font-medium', row.positive ? 'text-zinc-400' : 'text-zinc-500')}>
+                        {row.positive ? '+' : '−'}{row.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )
             ) : stat.subValue ? (
               <p className="text-xs text-zinc-500 mt-0.5">{stat.subValue}</p>
             ) : null}
