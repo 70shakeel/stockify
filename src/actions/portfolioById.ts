@@ -325,3 +325,18 @@ export async function getTransactionsByPortfolioId(portfolioId: string): Promise
 
   return { data: rows as Transaction[], error: null }
 }
+
+export async function getHeldQuantity(portfolioId: string, symbol: string): Promise<number> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return 0
+
+  const { data } = await supabase
+    .from('portfolio_holdings')
+    .select('net_quantity')
+    .eq('portfolio_id', portfolioId)
+    .eq('symbol', symbol.toUpperCase())
+    .single()
+
+  return data ? Number(data.net_quantity) : 0
+}

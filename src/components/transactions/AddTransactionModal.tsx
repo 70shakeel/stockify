@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { useAppStore } from '@/store/useAppStore'
 import { updateTransaction, addTransaction } from '@/actions/transactions'
+import { getHeldQuantity } from '@/actions/portfolioById'
 import { searchStocks } from '@/actions/stocks'
 import { ArrowUpCircle, ArrowDownCircle, DollarSign, Search } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
@@ -46,6 +47,9 @@ export function AddTransactionModal() {
   const [isSearching, setIsSearching] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
 
+  // Held quantity for SELL
+  const [heldQuantity, setHeldQuantity] = useState<number | null>(null)
+
   const [optimisticTxns, addOptimisticTxn] = useOptimistic<
     OptimisticTransaction[],
     OptimisticTransaction
@@ -75,6 +79,15 @@ export function AddTransactionModal() {
     }
   }, [isTransactionModalOpen, editingTransaction, transactionModalSymbol, transactionModalPrice])
 
+  // Fetch held quantity when selling
+  useEffect(() => {
+    if (type === 'SELL' && symbol && activePortfolioId) {
+      getHeldQuantity(activePortfolioId, symbol).then(setHeldQuantity)
+    } else {
+      setHeldQuantity(null)
+    }
+  }, [type, symbol, activePortfolioId])
+
   // Search autocomplete
   useEffect(() => {
     if (!symbol || symbol.length < 1 || editingTransaction) {
@@ -100,6 +113,7 @@ export function AddTransactionModal() {
     setDate(new Date().toISOString().split('T')[0])
     setNotes('')
     setError(null)
+    setHeldQuantity(null)
   }
 
   const handleClose = useCallback(() => {
@@ -275,15 +289,28 @@ export function AddTransactionModal() {
           />
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Quantity"
-              type="number"
-              placeholder="100"
-              min="1"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              required
-            />
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-zinc-400">Quantity</span>
+                {type === 'SELL' && heldQuantity !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(heldQuantity.toString())}
+                    className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    Owned: {heldQuantity} — Use all
+                  </button>
+                )}
+              </div>
+              <Input
+                type="number"
+                placeholder="100"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                required
+              />
+            </div>
             <Input
               label="Price per Share"
               type="number"
